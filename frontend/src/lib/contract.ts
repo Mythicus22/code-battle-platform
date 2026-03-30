@@ -1,6 +1,5 @@
 import { ethers } from 'ethers';
 
-// Contract configuration
 export const CONTRACT_CONFIG = {
   address: '0x146F85AAa295663335933eE03d96D0d290C9eEab',
   abi: [
@@ -11,46 +10,47 @@ export const CONTRACT_CONFIG = {
     'function commissionWallet() external view returns (address)',
     'event BetPlaced(uint256 indexed matchId, address indexed player, uint256 amount)',
     'event BetSettled(uint256 indexed matchId, address indexed winner, address indexed loser, uint256 pot, uint256 winnerPayout, uint256 commission)',
-    'event Refunded(uint256 indexed matchId, address indexed player, uint256 amount)'
+    'event Refunded(uint256 indexed matchId, address indexed player, uint256 amount)',
   ],
   network: {
-    chainId: '0xaa36a7', // Sepolia testnet
+    chainId: '0xaa36a7',
     chainName: 'Sepolia Test Network',
-    rpcUrls: ['https://sepolia.infura.io/v3/'],
-    nativeCurrency: {
-      name: 'Sepolia ETH',
-      symbol: 'ETH',
-      decimals: 18
-    },
-    blockExplorerUrls: ['https://sepolia.etherscan.io/']
-  }
+    rpcUrls: ['https://rpc.sepolia.org'],
+    nativeCurrency: { name: 'Sepolia ETH', symbol: 'ETH', decimals: 18 },
+    blockExplorerUrls: ['https://sepolia.etherscan.io/'],
+  },
 };
 
-export class ContractService {
-  private provider: ethers.BrowserProvider | null = null;
-  private contract: ethers.Contract | null = null;
-  private signer: ethers.Signer | null = null;
+// Convert MongoDB ObjectId string to uint256
+function matchIdToUint256(matchId: string): bigint {
+  const hex = matchId.replace(/[^0-9a-fA-F]/g, '').padEnd(64, '0').slice(0, 64);
+  return BigInt('0x' + hex);
+}
 
-  constructor() {
-    if (typeof window !== 'undefined' && window.ethereum) {
-      this.provider = new ethers.BrowserProvider(window.ethereum);
+export class ContractService {
+  private contract: ethers.Contract | null = null;
+
+  private getEthereum() {
+    if (typeof window === 'undefined' || !window.ethereum) {
+      throw new Error('MetaMask is not installed');
     }
+    return window.ethereum;
   }
 
   async ensureSepoliaNetwork(): Promise<void> {
-    if (!this.provider) throw new Error('MetaMask not available');
-
-    const network = await this.provider.getNetwork();
-    
-    if (network.chainId !== BigInt(parseInt(CONTRACT_CONFIG.network.chainId, 16))) {
+    const ethereum = this.getEthereum();
+    const provider = new ethers.BrowserProvider(ethereum);
+    const network = await provider.getNetwork();
+    const sepoliaChainId = BigInt(parseInt(CONTRACT_CONFIG.network.chainId, 16));
+    if (network.chainId !== sepoliaChainId) {
       try {
-        await window.ethereum.request({
+        await ethereum.request({
           method: 'wallet_switchEthereumChain',
           params: [{ chainId: CONTRACT_CONFIG.network.chainId }],
         });
       } catch (error: any) {
         if (error.code === 4902) {
-          await window.ethereum.request({
+          await ethereum.request({
             method: 'wallet_addEthereumChain',
             params: [CONTRACT_CONFIG.network],
           });
@@ -61,25 +61,18 @@ export class ContractService {
     }
   }
 
-  async initContract(): Promise<void> {
-    if (!this.provider) throw new Error('MetaMask not available');
-    
+  private async getContract(): Promise<ethers.Contract> {
     await this.ensureSepoliaNetwork();
-    this.signer = await this.provider.getSigner();
-    this.contract = new ethers.Contract(
-      CONTRACT_CONFIG.address,
-      CONTRACT_CONFIG.abi,
-      this.signer
-    );
+    const provider = new ethers.BrowserProvider(this.getEthereum());
+    const signer = await provider.getSigner();
+    return new ethers.Contract(CONTRACT_CONFIG.address, CONTRACT_CONFIG.abi, signer);
   }
 
   async placeBet(matchId: string, amount: string): Promise<string> {
-    if (!this.contract) await this.initContract();
-    
-    const tx = await this.contract!.placeBet(matchId, {
-      value: ethers.parseEther(amount)
-    });
-    
+    const contract = await this.getContract();
+    const numericId = matchIdToUint256(matchId);
+    const tx = await contract.placeBet(numericId, { value: ethers.parseEther(amount) });
+    await tx.wait();
     return tx.hash;
   }
 
@@ -91,35 +84,32 @@ export class ContractService {
     betTime: bigint;
     settled: boolean;
   }> {
-    if (!this.contract) await this.initContract();
-    
-    return await this.contract!.getMatch(matchId);
+    const contract = await this.getContract();
+    return await contract.getMatch(matchIdToUint256(matchId));
   }
 
   async settleBet(matchId: string, winner: string, loser: string): Promise<string> {
-    if (!this.contract) await this.initContract();
-    
-    const tx = await this.contract!.settleBet(matchId, winner, loser);
+    const contract = await this.getContract();
+    const tx = await contract.settleBet(matchIdToUint256(matchId), winner, loser);
+    await tx.wait();
     return tx.hash;
   }
 
   async refund(matchId: string): Promise<string> {
-    if (!this.contract) await this.initContract();
-    
-    const tx = await this.contract!.refund(matchId);
+    const contract = await this.getContract();
+    const tx = await contract.refund(matchIdToUint256(matchId));
+    await tx.wait();
     return tx.hash;
   }
 
   async getBalance(address: string): Promise<string> {
-    if (!this.provider) throw new Error('MetaMask not available');
-    
-    const balance = await this.provider.getBalance(address);
+    const provider = new ethers.BrowserProvider(this.getEthereum());
+    const balance = await provider.getBalance(address);
     return ethers.formatEther(balance);
   }
 
   onBetPlaced(callback: (matchId: string, player: string, amount: string) => void): void {
     if (!this.contract) return;
-    
     this.contract.on('BetPlaced', (matchId, player, amount) => {
       callback(matchId.toString(), player, ethers.formatEther(amount));
     });
@@ -127,23 +117,13 @@ export class ContractService {
 
   onBetSettled(callback: (matchId: string, winner: string, loser: string, pot: string, winnerPayout: string, commission: string) => void): void {
     if (!this.contract) return;
-    
     this.contract.on('BetSettled', (matchId, winner, loser, pot, winnerPayout, commission) => {
-      callback(
-        matchId.toString(),
-        winner,
-        loser,
-        ethers.formatEther(pot),
-        ethers.formatEther(winnerPayout),
-        ethers.formatEther(commission)
-      );
+      callback(matchId.toString(), winner, loser, ethers.formatEther(pot), ethers.formatEther(winnerPayout), ethers.formatEther(commission));
     });
   }
 
   removeAllListeners(): void {
-    if (this.contract) {
-      this.contract.removeAllListeners();
-    }
+    this.contract?.removeAllListeners();
   }
 }
 

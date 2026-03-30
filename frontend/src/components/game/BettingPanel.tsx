@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { ethers } from 'ethers';
 import { Wallet, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import { useMetaMask } from '@/hooks/useMetaMask';
 import { contractService } from '@/lib/contract';
@@ -100,10 +101,14 @@ export default function BettingPanel({ matchId, onBetPlaced, disabled = false }:
     }
   }
 
-  const isFirstPlayer = contractMatch && contractMatch.player1 === '0x0000000000000000000000000000000000000000';
-  const isSecondPlayer = contractMatch && contractMatch.player1 !== '0x0000000000000000000000000000000000000000' && contractMatch.player2 === '0x0000000000000000000000000000000000000000';
-  const bothPlayersJoined = contractMatch && contractMatch.player1 !== '0x0000000000000000000000000000000000000000' && contractMatch.player2 !== '0x0000000000000000000000000000000000000000';
-  const requiredAmount = contractMatch && contractMatch.amount1 > 0 ? parseFloat(contractMatch.amount1.toString()) / 1e18 : null;
+  const ZERO = '0x0000000000000000000000000000000000000000';
+  const isFirstPlayer = contractMatch && contractMatch.player1 === ZERO;
+  const isSecondPlayer = contractMatch && contractMatch.player1 !== ZERO && contractMatch.player2 === ZERO;
+  const bothPlayersJoined = contractMatch && contractMatch.player1 !== ZERO && contractMatch.player2 !== ZERO;
+  // amount1/amount2 are bigint from ethers v6 — use formatEther
+  const requiredAmount = contractMatch && contractMatch.amount1 > BigInt(0)
+    ? ethers.formatEther(contractMatch.amount1)
+    : null;
 
   return (
     <motion.div
@@ -161,7 +166,7 @@ export default function BettingPanel({ matchId, onBetPlaced, disabled = false }:
           <p className="text-gray-400">Both players have placed their bets</p>
           <div className="mt-4 p-4 bg-green-900/20 rounded-lg border border-green-500/30">
             <div className="text-2xl font-bold text-green-400">
-              {(parseFloat(contractMatch.amount1.toString()) + parseFloat(contractMatch.amount2.toString())) / 1e18} ETH
+              {(parseFloat(ethers.formatEther(contractMatch.amount1)) + parseFloat(ethers.formatEther(contractMatch.amount2))).toFixed(4)} ETH
             </div>
             <div className="text-sm text-gray-400">Total Prize Pool</div>
           </div>

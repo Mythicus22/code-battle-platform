@@ -9,6 +9,7 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().url(),
   MONGODB_URI: z.string(),
   REDIS_URL: z.string(),
+  REDIS_PASSWORD: z.string().optional(),
   JWT_SECRET: z.string().min(32),
   JWT_EXPIRES_IN: z.string().default('7d'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
@@ -36,6 +37,10 @@ const envSchema = z.object({
   AI_AGENT_API_URL: z.string().url().default('https://agent-prod.studio.lyzr.ai/v3/inference/chat/'),
   AI_AGENT_API_KEY: z.string().min(1),
   AI_AGENT_ID: z.string().min(1),
+  // Blockchain
+  SEPOLIA_RPC_URL: z.string().url().default('https://rpc.sepolia.org'),
+  COMMISSION_WALLET_PRIVATE_KEY: z.string().min(1),
+  CONTRACT_ADDRESS: z.string().min(1),
 });
 
 const env = envSchema.parse(process.env);

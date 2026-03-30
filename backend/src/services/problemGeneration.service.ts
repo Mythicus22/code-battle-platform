@@ -1,68 +1,51 @@
-import { generateProblem } from './aiAgent.service';
+import { aiService } from './ai.service';
 import Problem from '../models/Problem.model';
 
 function getTrophyRangeForDifficulty(difficulty: string): { min: number; max: number } {
   switch (difficulty) {
-    case 'Easy':
-      return { min: 0, max: 999 };
-    case 'Medium':
-      return { min: 1000, max: 1999 };
-    case 'Hard':
-      return { min: 2000, max: 2999 };
-    case 'Very Hard':
-      return { min: 3000, max: 3999 };
-    case 'Expert':
-      return { min: 4000, max: 9999 };
-    default:
-      return { min: 0, max: 999 };
+    case 'Easy': return { min: 0, max: 999 };
+    case 'Medium': return { min: 1000, max: 1999 };
+    case 'Hard': return { min: 2000, max: 2999 };
+    case 'Very Hard': return { min: 3000, max: 3999 };
+    case 'Expert': return { min: 4000, max: 9999 };
+    default: return { min: 0, max: 999 };
   }
 }
 
-export async function generateAndSaveProblem(trophies: number) {
+export async function generateAndSaveProblem(trophies: number, language = 'javascript') {
   try {
-    // Generate problem using AI agent
-    const aiProblem = await generateProblem(trophies);
-    
-    // Convert AI response to Problem model format
+    const aiProblem = await aiService.generateProblem(trophies, language);
+    const timeLimitSeconds = aiProblem.time_limit * 60;
+
     const problemData = {
       title: aiProblem.title,
       description: aiProblem.description,
       difficulty: aiProblem.difficulty as any,
-      difficultyScore: aiProblem.difficulty_score,
-      estimatedTimeSeconds: aiProblem.estimated_time_seconds,
       trophyRange: getTrophyRangeForDifficulty(aiProblem.difficulty),
-      testCases: aiProblem.testcases.map(tc => ({
-        input: tc.stdin,
-        expectedOutput: tc.expected_stdout,
+      testCases: aiProblem.test_cases.map(tc => ({
+        input: tc.input,
+        expectedOutput: tc.expected_output,
         isHidden: false,
-        explanation: tc.explanation
+        explanation: ''
       })),
       hint: aiProblem.hint,
-      timeLimitSeconds: Math.min(aiProblem.estimated_time_seconds, 300), // Cap at 5 minutes
+      timeLimitSeconds,
       memoryLimitMB: 256,
-      tags: aiProblem.tags,
+      tags: [],
       constraints: aiProblem.constraints,
       generationNotes: aiProblem.generation_notes,
-      aiGeneratedId: aiProblem.id
     };
 
-    // Save to database
-    const problem = await Problem.create(problemData);
-    return problem;
+    return await Problem.create(problemData);
   } catch (error: any) {
     console.error('Problem generation error:', error.message);
-    
-    // Fallback: try to find an existing problem for this trophy range
-    const fallbackProblem = await Problem.findOne({
+
+    const fallback = await Problem.findOne({
       'trophyRange.min': { $lte: trophies },
       'trophyRange.max': { $gte: trophies },
     });
-    
-    if (fallbackProblem) {
-      console.log('Using fallback problem:', fallbackProblem.title);
-      return fallbackProblem;
-    }
-    
+
+    if (fallback) return fallback;
     throw new Error('Failed to generate or find suitable problem');
   }
 }

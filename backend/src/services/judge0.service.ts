@@ -1,13 +1,6 @@
 import axios from 'axios';
 import env from '../config/env';
 
-// interface SubmissionRequest {
-//   source_code: string;
-//   language_id: number;
-//   stdin?: string;
-//   expected_output?: string;
-// }
-
 interface SubmissionResult {
   status: {
     id: number;
@@ -34,26 +27,21 @@ export async function submitCode(
   expectedOutput: string
 ): Promise<SubmissionResult> {
   try {
-    // Create submission
     const response = await axios.post(
       `${env.JUDGE0_API_URL}/submissions`,
       {
         source_code: code,
         language_id: languageId,
         stdin,
-        expected_output: expectedOutput,
+        expected_output: expectedOutput.trim(),
       },
       {
         headers: JUDGE0_HEADERS,
-        params: {
-          base64_encoded: false,
-          wait: false,
-        },
+        params: { base64_encoded: false, wait: false },
       }
     );
 
     const token = response.data.token;
-    // Poll for result
     return await pollSubmission(token);
   } catch (error: any) {
     console.error('Judge0 submission error:', error);
@@ -68,9 +56,7 @@ async function pollSubmission(token: string, maxRetries = 30): Promise<Submissio
         `${env.JUDGE0_API_URL}/submissions/${token}`,
         {
           headers: JUDGE0_HEADERS,
-          params: {
-            base64_encoded: false,
-          },
+          params: { base64_encoded: false },
         }
       );
 
@@ -80,7 +66,6 @@ async function pollSubmission(token: string, maxRetries = 30): Promise<Submissio
         return result;
       }
 
-      // Wait before next poll
       await new Promise((resolve) => setTimeout(resolve, 1000));
     } catch (error) {
       console.error('Judge0 polling error:', error);
@@ -116,7 +101,12 @@ export async function executeTestCases(
         testCase.expectedOutput
       );
 
-      const passed = result.status.id === 3; // 3 = Accepted
+      // Status 3 = Accepted (Judge0 already compares with expected_output)
+      // Also do manual trim comparison as fallback
+      const passed =
+        result.status.id === 3 ||
+        (result.stdout?.trim() === testCase.expectedOutput.trim());
+
       results.push({
         testCase: i + 1,
         passed,
@@ -138,7 +128,7 @@ export async function executeTestCases(
 }
 
 // Language IDs (common ones)
-export const LANGUAGE_IDS = {
+export const LANGUAGE_IDS: Record<string, number> = {
   javascript: 63,
   python: 71,
   java: 62,

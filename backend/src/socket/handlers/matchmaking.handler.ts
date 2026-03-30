@@ -3,6 +3,8 @@ import { joinQueue, leaveQueue } from '../../services/matchmaking.service';
 import User from '../../models/User.model';
 import Match from '../../models/Match.model';
 import { aiService } from '../../services/ai.service';
+import { updateMatchStats } from '../../services/trophy.service';
+import { checkAndAwardBadges } from '../../services/badge.service';
 import env from '../../config/env';
 
 export function registerMatchmakingHandlers(io: Server, socket: Socket): void {
@@ -89,9 +91,11 @@ async function createMatch(
       return;
     }
 
-    // Generate problem using AI service
+    // Generate problem using AI service - use player1's language
     const avgTrophies = Math.round((player1Data.trophies + player2.trophies) / 2);
     const problemData = await aiService.generateProblem(avgTrophies, language);
+    // time_limit from Lyzr is in minutes — convert to seconds for storage
+    const timeLimitSeconds = problemData.time_limit * 60;
 
     // Create match with embedded problem data
     const match = await Match.create({
@@ -101,18 +105,18 @@ async function createMatch(
         title: problemData.title,
         description: problemData.description,
         difficulty: problemData.difficulty,
-        timeLimitSeconds: problemData.estimated_time_seconds,
+        timeLimitSeconds,
         constraints: problemData.constraints,
         hint: problemData.hint,
-        testCases: problemData.testcases.map(tc => ({
-          input: tc.stdin,
-          expectedOutput: tc.expected_stdout,
-          explanation: tc.explanation
+        testCases: problemData.test_cases.map(tc => ({
+          input: tc.input,
+          expectedOutput: tc.expected_output,
+          explanation: ''
         })),
-        tags: problemData.tags,
-        language: problemData.language
+        tags: [],
+        language: problemData.language || language
       },
-      timeLimit: problemData.estimated_time_seconds,
+      timeLimit: timeLimitSeconds,
       status: 'IN_PROGRESS',
       betAmount: betAmount > 0 ? betAmount : undefined,
       startedAt: new Date(),
@@ -140,11 +144,11 @@ async function createMatch(
       problem: {
         title: problemData.title,
         description: problemData.description,
-        timeLimitSeconds: problemData.estimated_time_seconds,
+        timeLimitSeconds,
         constraints: problemData.constraints,
         hint: problemData.hint,
         difficulty: problemData.difficulty,
-        language: problemData.language,
+        language: problemData.language || language,
       },
       betAmount,
     };
@@ -175,13 +179,12 @@ async function createMatch(
         try {
           const currentMatch = await Match.findById(match._id);
           if (currentMatch && currentMatch.status === 'IN_PROGRESS') {
-            // Time's up - determine winner based on submissions
             await handleTimeUp(io, currentMatch);
           }
         } catch (error) {
           console.error('Match timeout error:', error);
         }
-      }, problemData.estimated_time_seconds * 1000);
+      }, timeLimitSeconds * 1000);
     }, 3000);
   } catch (error) {
     console.error('Create match error:', error);
@@ -230,6 +233,13 @@ async function handleTimeUp(io: Server, match: any): Promise<void> {
     match.status = 'COMPLETED';
     match.endedAt = new Date();
     await match.save();
+    
+    // Update stats
+    const loserId = winnerId.toString() === match.player1.toString()
+      ? match.player2.toString()
+      : match.player1.toString();
+    await updateMatchStats(winnerId.toString(), loserId);
+    await checkAndAwardBadges(winnerId.toString());
     
     // Notify players
     const roomId = `match:${match._id}`;
