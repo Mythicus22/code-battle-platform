@@ -82,6 +82,30 @@ export const BADGE_RULES = {
       return user ? user.trophies >= 4000 : false;
     },
   },
+  VETERAN: {
+    name: 'Veteran',
+    description: 'Play 50 total matches',
+    check: async (userId: string) => {
+      const user = await User.findById(userId);
+      return user ? user.totalGames >= 50 : false;
+    },
+  },
+  CODE_NINJA: {
+    name: 'Code Ninja',
+    description: 'Achieve a best runtime under 100ms',
+    check: async (userId: string) => {
+      const user = await User.findById(userId);
+      return user ? (user.bestRuntime !== undefined && user.bestRuntime > 0 && user.bestRuntime < 100) : false;
+    },
+  },
+  STEADFAST: {
+    name: 'Steadfast',
+    description: 'Secure 10 total wins',
+    check: async (userId: string) => {
+      const user = await User.findById(userId);
+      return user ? user.wins >= 10 : false;
+    },
+  },
 };
 
 export async function checkAndAwardBadges(userId: string): Promise<string[]> {

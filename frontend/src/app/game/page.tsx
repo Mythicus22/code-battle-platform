@@ -3,14 +3,21 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Trophy, Swords, Crown, Zap, Users, Target } from 'lucide-react';
+import { 
+  Trophy, Settings, RefreshCcw, Terminal, Play, Send, CheckCircle2, Clock, XCircle, Lightbulb, BarChart2, Cpu, ChevronRight, Code2, Target,
+  Volume2, Swords
+} from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSocket } from '@/hooks/useSocket';
 import { useMetaMask } from '@/hooks/useMetaMask';
 import { useBetting } from '@/hooks/useBetting';
 import { ARENAS, getArenaByTrophies } from '@/constants/arenas';
-import Leaderboard from '@/components/game/Leaderboard';
+import RightSidebar from '@/components/game/RightSidebar';
 import BettingPanel from '@/components/game/BettingPanel';
+import CodeEditor from '@/components/game/CodeEditor';
+import WeaponSelectionModal from '@/components/game/WeaponSelectionModal';
+import ArenaMapView from '@/components/game/ArenaMapView';
+import MatchmakingStatus from '@/components/game/MatchmakingStatus';
 import toast from 'react-hot-toast';
 
 type GameState = 'lobby' | 'matchmaking' | 'in_game';
@@ -23,6 +30,8 @@ export default function GamePage() {
   const { bettingState, settleBet, resetBetting } = useBetting();
 
   const [gameState, setGameState] = useState<GameState>('lobby');
+  const [showWeaponModal, setShowWeaponModal] = useState(false);
+  const [challengingFriendId, setChallengingFriendId] = useState<{id: string, username: string} | null>(null);
   const [betAmount, setBetAmount] = useState(0);
   const [cryptoBetting, setCryptoBetting] = useState(false);
   const [cryptoBetAmount, setCryptoBetAmount] = useState('0.01');
@@ -34,6 +43,8 @@ export default function GamePage() {
   const [code, setCode] = useState('');
   const [testResults, setTestResults] = useState<any[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [opponentProgress, setOpponentProgress] = useState(0);
+  const [playerProgress, setPlayerProgress] = useState(0);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const gameContainerRef = useRef<HTMLDivElement>(null);
@@ -127,6 +138,12 @@ export default function GamePage() {
   const handleSubmissionResult = useCallback((data: any) => {
     setSubmitting(false);
     setTestResults(data.testResults);
+    
+    // Calculate passing percentage
+    const passedTests = data.testResults.filter((r: any) => r.passed).length;
+    const totalTests = data.testResults.length;
+    setPlayerProgress(totalTests > 0 ? Math.round((passedTests / totalTests) * 100) : 0);
+
     if (data.allPassed) {
       toast.success('✅ All tests passed!');
     } else {
@@ -136,7 +153,13 @@ export default function GamePage() {
   }, []);
 
   const handleOpponentSubmitted = useCallback((data: any) => {
-    if (data.allPassed) toast('⚠️ Opponent passed all tests!', { icon: '🏃' });
+      if (data.allPassed) {
+          setOpponentProgress(100);
+          toast('⚠️ Opponent passed all tests!', { icon: '🏃' });
+      } else {
+           // Fallback progress if not all passed but they submitted
+           setOpponentProgress(prev => Math.min(prev + 10, 90));
+      }
   }, []);
 
   const handleGameEnd = useCallback((data: any) => {
@@ -165,6 +188,8 @@ export default function GamePage() {
       setOpponent(null);
       setCode('');
       setTestResults([]);
+      setOpponentProgress(0);
+      setPlayerProgress(0);
       setSubmitting(false);
       setCryptoBetting(false);
       resetBetting();
@@ -184,6 +209,57 @@ export default function GamePage() {
     toast.error(data.message || 'An error occurred');
   }, []);
 
+  const handleChallengeSent = useCallback((data: any) => {
+    setGameState('matchmaking');
+    toast.success(data.message || 'Challenge sent. Waiting for friend to accept...');
+  }, []);
+
+  const handleFriendChallenged = useCallback((data: any) => {
+    // Show a toast with an option to accept
+    toast.custom((t) => (
+      <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-gray-900 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5`}>
+        <div className="flex-1 w-0 p-4">
+          <div className="flex items-start">
+            <div className="flex-1">
+              <p className="text-sm font-medium text-white">⚔️ Challenge from {data.challengerUsername}!</p>
+              <p className="mt-1 text-sm text-gray-400">Bet: {data.cryptoBetting ? `${data.cryptoBetAmount} ETH` : `$${data.betAmount}`} | Language: {data.language}</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex border-l border-gray-700">
+          <button onClick={() => {
+              emit('accept_challenge', { challengerId: data.challengerId, language: data.language });
+              toast.dismiss(t.id);
+            }} className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-primary-400 hover:text-primary-300 focus:outline-none">
+            Accept
+          </button>
+        </div>
+      </div>
+    ), { duration: 15000 });
+  }, [emit]);
+
+  const handleFriendRequestReceived = useCallback((data: any) => {
+    toast.custom((t) => (
+      <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-gray-900 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5`}>
+        <div className="flex-1 w-0 p-4">
+          <p className="text-sm font-medium text-white">👋 Friend request from {data.fromUsername}!</p>
+        </div>
+        <div className="flex border-l border-gray-700">
+          <button onClick={() => {
+              emit('accept_friend_request', { requesterId: data.fromUserId });
+              toast.dismiss(t.id);
+            }} className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-success-500 hover:text-success-400">
+            Accept
+          </button>
+        </div>
+      </div>
+    ), { duration: 15000 });
+  }, [emit]);
+
+  const handleFriendRequestAccepted = useCallback((data: any) => {
+    toast.success(data.message || 'Friend request accepted!');
+  }, []);
+
   // Register/unregister socket listeners
   useEffect(() => {
     if (!user) return;
@@ -194,6 +270,10 @@ export default function GamePage() {
     on('game_end', handleGameEnd);
     on('tab_switch_warning', handleTabSwitchWarning);
     on('hint', handleHint);
+    on('challenge_sent', handleChallengeSent);
+    on('friend_challenged', handleFriendChallenged);
+    on('friend_request_received', handleFriendRequestReceived);
+    on('friend_request_accepted', handleFriendRequestAccepted);
     on('error', handleError);
     return () => {
       off('match_found', handleMatchFound);
@@ -203,9 +283,13 @@ export default function GamePage() {
       off('game_end', handleGameEnd);
       off('tab_switch_warning', handleTabSwitchWarning);
       off('hint', handleHint);
+      off('challenge_sent', handleChallengeSent);
+      off('friend_challenged', handleFriendChallenged);
+      off('friend_request_received', handleFriendRequestReceived);
+      off('friend_request_accepted', handleFriendRequestAccepted);
       off('error', handleError);
     };
-  }, [user, on, off, handleMatchFound, handleGameStart, handleSubmissionResult, handleOpponentSubmitted, handleGameEnd, handleTabSwitchWarning, handleHint, handleError]);
+  }, [user, on, off, handleMatchFound, handleGameStart, handleSubmissionResult, handleOpponentSubmitted, handleGameEnd, handleTabSwitchWarning, handleHint, handleError, handleChallengeSent, handleFriendChallenged, handleFriendRequestReceived, handleFriendRequestAccepted]);
 
   // Visibility change (tab switch) detection during game
   useEffect(() => {
@@ -228,18 +312,51 @@ export default function GamePage() {
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
   async function startMatchmaking() {
+    setShowWeaponModal(true);
+  }
+
+  async function proceedToMatchmaking() {
     if (!connected) { toast.error('Not connected to server'); return; }
     if (cryptoBetting && !metaMaskConnected) {
       try { await connect(); } catch { toast.error('MetaMask required for crypto betting'); return; }
     }
-    setGameState('matchmaking');
-    emit('join_matchmaking', { betAmount: cryptoBetting ? 0 : betAmount, language: selectedLanguage, cryptoBetting });
+    setShowWeaponModal(false);
+    
+    if (challengingFriendId) {
+      emit('challenge_friend', { 
+        friendId: challengingFriendId.id, 
+        betAmount: cryptoBetting ? 0 : betAmount, 
+        language: selectedLanguage, 
+        cryptoBetting,
+        cryptoBetAmount: cryptoBetting ? cryptoBetAmount : '0'
+      });
+      setChallengingFriendId(null);
+    } else {
+      setGameState('matchmaking');
+      emit('join_matchmaking', { betAmount: cryptoBetting ? 0 : betAmount, language: selectedLanguage, cryptoBetting });
+    }
+  }
+
+  function cancelWeaponModal() {
+    setShowWeaponModal(false);
+    setChallengingFriendId(null);
   }
 
   function cancelMatchmaking() {
     emit('leave_matchmaking');
     setGameState('lobby');
     toast('Matchmaking cancelled');
+  }
+
+  function forfeitMatch() {
+    if (confirm('Are you heavily damaged? Forfeiting will result in a loss of trophies. Proceed?')) {
+       emit('forfeit_match', { matchId });
+       setGameState('lobby');
+       if (document.fullscreenElement) {
+         document.exitFullscreen().catch(() => {});
+       }
+       toast.error('You have forfeited the match.');
+    }
   }
 
   function submitCode() {
@@ -249,6 +366,15 @@ export default function GamePage() {
     emit('submit_code', { matchId, code, language: selectedLanguage });
     toast('⏳ Submitting...');
   }
+  
+  function runTests() {
+    if (!code.trim()) { toast.error('Please write some code first'); return; }
+    if (submitting) return;
+    setSubmitting(true);
+    // Mimics taking an action, uses submit logic for now
+    emit('submit_code', { matchId, code, language: selectedLanguage });
+    toast('⏳ Running Tests...');
+  }
 
   function requestHint() {
     emit('request_hint', { matchId });
@@ -256,9 +382,8 @@ export default function GamePage() {
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center">
-        <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-          className="w-16 h-16 border-4 border-primary-500 border-t-transparent rounded-full" />
+      <div className="min-h-screen bg-[#080b14] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin shadow-[0_0_15px_rgba(0,242,255,0.5)]" />
       </div>
     );
   }
@@ -267,165 +392,216 @@ export default function GamePage() {
 
   // ── LOBBY ──────────────────────────────────────────────────────────────────
   if (gameState === 'lobby') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900">
-        <div className="container mx-auto px-4 py-8">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-12">
-            <h1 className="text-6xl font-bold mb-4 bg-gradient-to-r from-red-400 via-yellow-400 to-purple-400 bg-clip-text text-transparent">
-              ⚔️ BATTLE ARENA ⚔️
-            </h1>
-            <p className="text-xl text-gray-400">Prove your coding skills in epic 1v1 battles</p>
-          </motion.div>
-
-          <div className="grid lg:grid-cols-3 gap-8">
-            <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="lg:col-span-2 space-y-8">
-              {/* Arena Card */}
-              <div className="card bg-gradient-to-br from-gray-800 via-gray-900 to-black border-2 shadow-2xl"
-                style={{ borderColor: currentArena.color, boxShadow: `0 0 30px ${currentArena.color}40` }}>
-
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center space-x-4">
-                    <span className="text-6xl">{currentArena.icon}</span>
-                    <div>
-                      <h2 className="text-3xl font-bold" style={{ color: currentArena.color }}>{currentArena.name} Arena</h2>
-                      <p className="text-gray-400">{currentArena.description}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-3xl font-bold text-yellow-400">{user.trophies} 🏆</div>
-                    <div className="text-sm text-gray-400">{Math.max(0, currentArena.maxTrophies - user.trophies)} to next arena</div>
-                  </div>
-                </div>
-
-                {/* Progress bar */}
-                <div className="mb-6">
-                  <div className="bg-gray-700 rounded-full h-3 overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${Math.min(100, ((user.trophies - currentArena.minTrophies) / (currentArena.maxTrophies - currentArena.minTrophies)) * 100)}%` }}
-                      transition={{ duration: 1.5, ease: 'easeOut' }}
-                      className="h-3 rounded-full bg-gradient-to-r from-primary-500 via-yellow-500 to-purple-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Language Selection */}
-                <div className="mb-6">
-                  <h3 className="text-xl font-bold mb-3 flex items-center"><Zap className="w-5 h-5 mr-2" /> Language</h3>
-                  <div className="grid grid-cols-4 gap-3">
-                    {['javascript', 'python', 'java', 'cpp'].map((lang) => (
-                      <button key={lang} onClick={() => setSelectedLanguage(lang)}
-                        className={`p-3 rounded-xl font-bold transition-all ${selectedLanguage === lang
-                          ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg'
-                          : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>
-                        {lang === 'javascript' ? 'JS' : lang === 'cpp' ? 'C++' : lang.charAt(0).toUpperCase() + lang.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Betting */}
-                <div className="mb-6">
-                  <h3 className="text-xl font-bold mb-3 flex items-center"><Target className="w-5 h-5 mr-2" /> Betting</h3>
-                  <div className="flex mb-4 bg-gray-800 rounded-xl p-1">
-                    <button onClick={() => setCryptoBetting(false)}
-                      className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all ${!cryptoBetting ? 'bg-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}>
-                      💵 Traditional
-                    </button>
-                    <button onClick={() => setCryptoBetting(true)}
-                      className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all ${cryptoBetting ? 'bg-purple-500 text-white' : 'text-gray-400 hover:text-white'}`}>
-                      🦊 Crypto (ETH)
-                    </button>
-                  </div>
-
-                  {!cryptoBetting ? (
-                    <div className="grid grid-cols-5 gap-2">
-                      {[0, 1, 5, 10, 20].map((amount) => (
-                        <button key={amount} onClick={() => setBetAmount(amount)}
-                          className={`p-3 rounded-xl font-bold transition-all ${betAmount === amount
-                            ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white'
-                            : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>
-                          {amount === 0 ? 'Free' : `$${amount}`}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-4 gap-2">
-                      {['0.01', '0.05', '0.1', '0.2'].map((amount) => (
-                        <button key={amount} onClick={() => setCryptoBetAmount(amount)}
-                          className={`p-3 rounded-xl font-bold transition-all ${cryptoBetAmount === amount
-                            ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
-                            : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}>
-                          {amount} ETH
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Start Battle */}
-                <motion.button
-                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                  onClick={startMatchmaking} disabled={!connected}
-                  className="w-full bg-gradient-to-r from-red-500 via-orange-500 to-red-600 text-white font-bold py-6 rounded-2xl text-2xl flex items-center justify-center space-x-4 shadow-2xl border-2 border-red-400 disabled:opacity-50">
-                  <Swords className="w-8 h-8" />
-                  <span>{connected ? 'START BATTLE' : 'CONNECTING...'}</span>
-                  <Swords className="w-8 h-8" />
-                </motion.button>
-              </div>
-
-              {/* Arena Progression */}
-              <div className="card bg-gradient-to-br from-purple-900/20 to-blue-900/20 border border-purple-500/30">
-                <h3 className="text-2xl font-bold mb-6 flex items-center">
-                  <Crown className="w-6 h-6 mr-3 text-yellow-400" /> Arena Progression
-                </h3>
-                <div className="grid grid-cols-5 gap-4">
-                  {ARENAS.map((arena) => {
-                    const isUnlocked = user.trophies >= arena.minTrophies;
-                    const isCurrent = currentArena.id === arena.id;
-                    return (
-                      <div key={arena.id}
-                        className={`p-4 rounded-xl text-center transition-all ${isCurrent
-                          ? 'bg-yellow-500/20 border-2 border-yellow-400'
-                          : isUnlocked ? 'bg-gray-700/50 border border-gray-600'
-                          : 'bg-gray-800/30 opacity-50 border border-gray-700'}`}>
-                        <div className="text-4xl mb-2">{arena.icon}</div>
-                        <div className="font-bold text-sm" style={{ color: isUnlocked ? arena.color : '#666' }}>{arena.name}</div>
-                        <div className="text-xs text-gray-400">{arena.minTrophies}+ 🏆</div>
-                        {isCurrent && <div className="text-xs text-yellow-400 font-bold mt-1">CURRENT</div>}
+      return (
+        <div className="min-h-screen bg-[#080b14] text-white">
+          <WeaponSelectionModal
+            isOpen={showWeaponModal}
+            selectedLanguage={selectedLanguage}
+            onLanguageSelect={setSelectedLanguage}
+            onConfirm={proceedToMatchmaking}
+            onCancel={cancelWeaponModal}
+          />
+  
+          <div className="max-w-[1600px] mx-auto px-4 lg:px-8 py-8 h-screen flex flex-col">
+            {/* Header */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-8 shrink-0">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-black italic tracking-tighter mb-2 drop-shadow-md">
+                BATTLE ARENA
+              </h1>
+              <p className="text-sm md:text-base text-gray-500 font-bold uppercase tracking-widest">Prove your skills • {user.trophies} 🏆</p>
+            </motion.div>
+  
+            {/* Main Layout Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 min-h-0">
+                
+              {/* Left Column: Battle Setup (Arena details & Stakes) */}
+              <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="lg:col-span-1 flex flex-col gap-6 overflow-y-auto pr-2 pb-8 scrollbar-thin scrollbar-thumb-white/10">
+                
+                {/* Arena Card */}
+                <div className="bg-[#111827] border border-gray-800 rounded-3xl p-6 relative overflow-hidden shadow-2xl group flex-shrink-0">
+                   <div className="absolute inset-0 opacity-10 bg-gradient-to-br from-primary-500 to-transparent pointer-events-none group-hover:opacity-20 transition-opacity" />
+                   <div className="relative z-10 flex flex-col space-y-4">
+                      <div className="flex items-center space-x-4">
+                        <div className="text-4xl filter drop-shadow-[0_0_15px_rgba(0,242,255,0.4)]">{currentArena.icon}</div>
+                        <div>
+                          <h2 className="text-2xl font-black italic tracking-tighter uppercase" style={{ color: currentArena.color }}>
+                              {currentArena.name}
+                          </h2>
+                          <div className="text-[10px] text-gray-400 font-bold tracking-widest uppercase">Current District</div>
+                        </div>
                       </div>
-                    );
-                  })}
+                      <p className="text-xs text-gray-500 border-t border-gray-800/50 pt-4 font-medium">{currentArena.description}</p>
+                   </div>
                 </div>
-              </div>
-            </motion.div>
-
-            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
-              <Leaderboard />
-            </motion.div>
+  
+                {/* Stakes Card */}
+                <div className="bg-[#111827] border border-gray-800 rounded-3xl p-6 shadow-2xl flex flex-col min-h-0 flex-shrink-0">
+                   <h3 className="text-sm font-black uppercase tracking-widest text-white mb-6 border-b border-gray-800/50 pb-4 flex items-center gap-2">
+                       <Target className="w-4 h-4 text-secondary-500" /> Wager Protocol
+                   </h3>
+                   
+                   <div className="space-y-6">
+                      {/* Mode Toggle */}
+                      <div className="flex bg-gray-900 border border-gray-800 rounded-xl p-1">
+                          <button
+                           onClick={() => setCryptoBetting(false)}
+                           className={`flex-1 py-3 text-xs font-black tracking-widest uppercase rounded-lg transition-all ${!cryptoBetting ? 'bg-primary-600 text-white shadow-[0_0_15px_rgba(0,242,255,0.4)]' : 'text-gray-500 hover:text-gray-300'}`}
+                          >
+                           XP Score
+                          </button>
+                          <button
+                           onClick={() => setCryptoBetting(true)}
+                           className={`flex-1 py-3 text-xs font-black tracking-widest uppercase rounded-lg transition-all ${cryptoBetting ? 'bg-secondary-600 text-white shadow-[0_0_15px_rgba(188,0,255,0.4)]' : 'text-gray-500 hover:text-gray-300'}`}
+                          >
+                           Crypto (Ξ)
+                          </button>
+                      </div>
+  
+                      {/* Amount Selection Grid */}
+                      <div>
+                          <label className="text-[10px] font-black tracking-widest uppercase text-gray-500 mb-3 block">Configure Stake</label>
+                          <div className="grid grid-cols-2 gap-3">
+                              {!cryptoBetting ? (
+                                  [0, 1, 5, 10, 20].map((amount) => (
+                                      <button key={amount} onClick={() => setBetAmount(amount)}
+                                        className={`py-3 rounded-xl border font-black transition-all ${betAmount === amount ? 'bg-primary-600/10 border-primary-500 text-primary-400 shadow-[0_0_10px_rgba(0,242,255,0.2)]' : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-700'}`}
+                                      >
+                                          {amount === 0 ? 'FREE BRAWL' : `$${amount}`}
+                                      </button>
+                                  ))
+                              ) : (
+                                  ['0.01', '0.05', '0.1', '0.2'].map((amount) => (
+                                      <button key={amount} onClick={() => setCryptoBetAmount(amount)}
+                                        className={`py-3 rounded-xl border font-black transition-all ${cryptoBetAmount === amount ? 'bg-secondary-600/10 border-secondary-500 text-secondary-400 shadow-[0_0_10px_rgba(188,0,255,0.2)]' : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-700'}`}
+                                      >
+                                          {amount} ETH
+                                      </button>
+                                  ))
+                              )}
+                          </div>
+                      </div>
+                      
+                      <motion.button
+                         whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                         onClick={startMatchmaking} disabled={!connected}
+                         className="w-full mt-4 bg-gradient-to-r from-primary-600 to-primary-400 hover:from-primary-500 hover:to-primary-300 disabled:opacity-50 text-white font-black py-4 rounded-xl flex justify-center items-center gap-2 uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(0,242,255,0.3)] transition-all"
+                      >
+                         <Play size={18} className="fill-current" /> {connected ? 'Initialize Match' : 'Connecting...'}
+                      </motion.button>
+                   </div>
+                </div>
+              </motion.div>
+  
+              {/* Center Column: Interactive Map Grid */}
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-2 bg-[#111827] border border-gray-800 rounded-3xl overflow-hidden shadow-2xl min-h-[400px]">
+                <ArenaMapView userTrophies={user.trophies} currentArenaId={currentArena.id} />
+              </motion.div>
+  
+              {/* Right Column: Active Social / Leaderboard */}
+              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="lg:col-span-1 overflow-y-auto pb-8 scrollbar-thin scrollbar-thumb-white/10 hidden lg:block">
+                <RightSidebar 
+                  onChallengeFriend={(id, username) => {
+                    setChallengingFriendId({id, username});
+                    setShowWeaponModal(true);
+                  }} 
+                />
+              </motion.div>
+            </div>
           </div>
         </div>
-      </div>
-    );
+      );
   }
 
   // ── MATCHMAKING ────────────────────────────────────────────────────────────
   if (gameState === 'matchmaking') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center">
-        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-          className="card text-center max-w-lg bg-gradient-to-br from-gray-800 to-gray-900 border border-primary-500/50 shadow-2xl">
-          <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-            className="w-20 h-20 border-4 border-primary-500 border-t-transparent rounded-full mx-auto mb-6" />
-          <h2 className="text-3xl font-bold mb-4 bg-gradient-to-r from-primary-400 to-purple-400 bg-clip-text text-transparent">
-            Finding Opponent...
-          </h2>
-          <div className="flex items-center justify-center space-x-2 mb-4">
-            <Users className="w-5 h-5 text-gray-400" />
-            <span className="text-gray-300">{currentArena.name} Arena · {selectedLanguage}</span>
+      <div className="min-h-screen bg-[#080b14] flex items-center justify-center p-4">
+           {/* Decorative background grid/lighting */}
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,242,255,0.05),transparent_50%)] pointer-events-none" />
+          <div className="absolute inset-0 scanlines opacity-20 pointer-events-none" />
+
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="w-full max-w-4xl bg-[#111827]/80 backdrop-blur-xl border border-gray-800 rounded-3xl p-10 shadow-[0_0_50px_rgba(0,0,0,0.5)] z-10"
+        >
+          {/* Top Info Header */}
+          <div className="flex justify-between items-center border-b border-gray-800 pb-6 mb-8">
+             <div className="text-[10px] font-black uppercase tracking-widest text-gray-500">Protocol Status</div>
+             <div className="text-[10px] font-black uppercase tracking-widest text-primary-400 bg-primary-500/10 px-3 py-1 rounded border border-primary-500/20 shadow-[0_0_10px_rgba(0,242,255,0.2)]">Syncing Global Datacenter</div>
+             <div className="text-[10px] font-black uppercase tracking-widest text-gray-500">WSS/TLS 1.3</div>
           </div>
-          <p className="text-gray-400 mb-6">Matching around {user.trophies} trophies</p>
-          <button onClick={cancelMatchmaking} className="btn btn-secondary w-full">Cancel</button>
+
+          {/* Central Matchmaking Display */}
+          <div className="flex flex-col items-center justify-center py-12 relative">
+
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10">
+                <span className="text-[300px] font-black italic tracking-tighter text-white select-none">VS</span>
+            </div>
+
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-12 sm:gap-24 relative z-10 w-full">
+               
+               {/* Player Side */}
+               <motion.div initial={{ x: -50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="flex flex-col items-center space-y-4">
+                  <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary-600 to-primary-400 p-1 shadow-[0_0_30px_rgba(0,242,255,0.4)]">
+                      <div className="w-full h-full bg-[#080b14] rounded-[14px] flex items-center justify-center text-3xl font-bold uppercase overflow-hidden relative">
+                         <img src="/api/placeholder/100/100" className="absolute inset-0 opacity-50" />
+                         <span className="relative z-10 drop-shadow-md">{user.username.charAt(0)}</span>
+                      </div>
+                  </div>
+                  <div className="text-center">
+                     <div className="text-xl font-black italic uppercase tracking-tighter">{user.username}</div>
+                     <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Rank {Math.floor(user.trophies/100)}</div>
+                  </div>
+               </motion.div>
+
+               {/* Center Spinner */}
+               <div className="flex flex-col items-center">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
+                    className="relative w-32 h-32"
+                  >
+                    <svg viewBox="0 0 100 100" className="w-full h-full animate-pulse-glow">
+                      <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(0,242,255,0.2)" strokeWidth="2" strokeDasharray="10 5" />
+                      <circle cx="50" cy="50" r="35" fill="none" stroke="rgba(188,0,255,0.4)" strokeWidth="4" strokeDasharray="20 10 5 10" className="origin-center animate-[spin_3s_linear_reverse_infinite]" />
+                      <circle cx="50" cy="50" r="20" fill="none" stroke="rgba(0,255,136,0.6)" strokeWidth="1" strokeDasharray="5 5" />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <Swords className="w-8 h-8 text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.8)]" />
+                    </div>
+                  </motion.div>
+               </div>
+
+               {/* Opponent Side (Searching) */}
+               <motion.div initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="flex flex-col items-center space-y-4">
+                   <div className="w-24 h-24 rounded-2xl bg-gray-800 p-1 relative overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-br from-secondary-600/50 to-transparent animate-pulse" />
+                      <div className="w-full h-full bg-[#111827] rounded-[14px] flex items-center justify-center text-3xl font-bold text-gray-600">
+                         ?
+                      </div>
+                  </div>
+                  <div className="text-center">
+                     <div className="text-xl font-black italic uppercase tracking-tighter text-gray-500 animate-pulse">Scanning...</div>
+                     <div className="text-xs font-bold text-gray-600 uppercase tracking-widest mt-1">Est. Wait: 0:15</div>
+                  </div>
+               </motion.div>
+            </div>
+            
+            <div className="text-center mt-12 bg-black/40 px-6 py-3 rounded-xl border border-gray-800">
+              <span className="text-primary-400 font-mono text-sm mr-2">&gt;</span>
+              <span className="text-sm font-bold tracking-widest uppercase text-gray-300">Targeting Sector: <span className="text-white">{currentArena.name}</span> | Weapon: <span className="text-secondary-400">{selectedLanguage}</span></span>
+            </div>
+            
+            <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={cancelMatchmaking}
+                className="mt-8 px-8 py-3 bg-transparent border border-danger-500/50 text-danger-500 font-black uppercase tracking-[0.2em] text-xs rounded-xl hover:bg-danger-500/10 hover:border-danger-500 transition-all shadow-[0_0_15px_rgba(255,51,102,0)] hover:shadow-[0_0_15px_rgba(255,51,102,0.3)]"
+              >
+                Abort Protocol
+            </motion.button>
+          </div>
         </motion.div>
       </div>
     );
@@ -435,121 +611,288 @@ export default function GamePage() {
   if (gameState === 'in_game' && problem) {
     const mins = Math.floor(timeLeft / 60);
     const secs = (timeLeft % 60).toString().padStart(2, '0');
-    const timerColor = timeLeft <= 60 ? 'text-red-400' : timeLeft <= 300 ? 'text-yellow-400' : 'text-green-400';
+    // Ensure accurate sizing of elements by using flex layouts based directly on wireframe proportions.
 
     return (
-      <div ref={gameContainerRef} className="h-screen w-screen bg-gray-900 flex flex-col overflow-hidden select-none">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-3 bg-gray-800 border-b border-gray-700 shrink-0">
-          {/* Player */}
-          <div className="flex items-center space-x-3">
-            <div className="text-center px-4 py-2 bg-blue-500/20 rounded-xl border border-blue-400">
-              <div className="text-xs text-gray-400">You</div>
-              <div className="font-bold text-blue-400">{user.username}</div>
-              <div className="text-xs text-gray-400">{user.trophies} 🏆</div>
+      <div ref={gameContainerRef} className="flex flex-col h-screen bg-[#080b14] text-white font-sans overflow-hidden">
+        
+        {/* --- HEADER --- */}
+        <header className="h-16 flex items-center justify-between px-6 border-b border-white/10 bg-black/40 backdrop-blur-md relative z-10 shrink-0">
+            {/* Logo */}
+            <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-primary-600 rounded flex items-center justify-center shadow-[0_0_10px_rgba(0,242,255,0.3)]">
+                <Code2 size={20} className="text-white" />
             </div>
-            <motion.div animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 1, repeat: Infinity }}
-              className="text-4xl">⚔️</motion.div>
-            <div className="text-center px-4 py-2 bg-red-500/20 rounded-xl border border-red-400">
-              <div className="text-xs text-gray-400">Opponent</div>
-              <div className="font-bold text-red-400">{opponent?.username}</div>
-              <div className="text-xs text-gray-400">{opponent?.trophies} 🏆</div>
-            </div>
-          </div>
-
-          {/* Timer */}
-          <div className="text-center">
-            <div className={`text-4xl font-bold font-mono ${timerColor}`}>{mins}:{secs}</div>
-            <div className="text-xs text-gray-400">Time Left</div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex space-x-3">
-            <span className="px-3 py-1 bg-gray-700 rounded-lg text-sm text-gray-300 font-mono">
-              {selectedLanguage === 'javascript' ? 'JS' : selectedLanguage === 'cpp' ? 'C++' : selectedLanguage.charAt(0).toUpperCase() + selectedLanguage.slice(1)}
-            </span>
-            <button onClick={requestHint}
-              className="px-4 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/50 rounded-lg text-yellow-400 font-medium transition-all">
-              💡 Hint
-            </button>
-            <button onClick={submitCode} disabled={submitting}
-              className="px-6 py-2 bg-green-500 hover:bg-green-600 disabled:opacity-50 rounded-lg text-white font-bold transition-all">
-              {submitting ? '⏳ Running...' : '🚀 Submit'}
-            </button>
-          </div>
-        </div>
-
-        {/* Body */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* Problem Panel */}
-          <div className="w-1/2 flex flex-col border-r border-gray-700 overflow-y-auto p-6 bg-gray-900">
-            <div className="flex items-center space-x-3 mb-4">
-              <h2 className="text-2xl font-bold text-primary-400">{problem.title}</h2>
-              <span className={`px-2 py-1 rounded text-xs font-bold ${
-                problem.difficulty === 'Easy' ? 'bg-green-500/20 text-green-400' :
-                problem.difficulty === 'Medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                'bg-red-500/20 text-red-400'}`}>
-                {problem.difficulty}
-              </span>
+            <span className="font-black italic tracking-tighter text-xl text-primary-400 uppercase hidden sm:block">Code Battle</span>
             </div>
 
-            {problem.constraints && (
-              <div className="mb-4 p-3 bg-gray-800 rounded-lg border border-gray-700">
-                <div className="text-xs text-gray-400 mb-1 font-bold uppercase">Constraints</div>
-                <div className="text-sm text-gray-300 font-mono">{problem.constraints}</div>
-              </div>
-            )}
-
-            <div className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap flex-1">
-              {problem.description}
-            </div>
-
-            {/* Test Results */}
-            {testResults.length > 0 && (
-              <div className="mt-6">
-                <h3 className="font-bold mb-3 text-lg">Test Results</h3>
-                <div className="space-y-2">
-                  {testResults.map((r: any, i: number) => (
-                    <div key={i} className={`p-3 rounded-lg flex items-center justify-between ${r.passed ? 'bg-green-900/30 border border-green-500/50' : 'bg-red-900/30 border border-red-500/50'}`}>
-                      <span className="text-sm">Test Case {i + 1}</span>
-                      <div className="flex items-center space-x-3">
-                        {r.runtime && <span className="text-xs text-gray-400">{r.runtime.toFixed(3)}s</span>}
-                        {r.error && <span className="text-xs text-red-400 truncate max-w-xs">{r.error}</span>}
-                        <span className={`font-bold ${r.passed ? 'text-green-400' : 'text-red-400'}`}>
-                          {r.passed ? '✅ PASSED' : '❌ FAILED'}
-                        </span>
-                      </div>
+            {/* Middle Container (Player vs CPU/Timer vs Opponent) */}
+            <div className="flex items-center justify-center absolute left-1/2 -translate-x-1/2 w-[700px] max-w-full">
+                
+                {/* Player 1 Stats */}
+                <div className="flex items-center justify-end gap-3 bg-white/5 rounded-xl px-3 py-1.5 border border-white/5 flex-1 w-full relative overflow-hidden group">
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent to-primary-500/5 group-hover:to-primary-500/10 pointer-events-none transition-colors" />
+                    <div className="text-right flex-1 z-10">
+                        <div className="flex items-center gap-2 justify-end">
+                            <span className="text-sm font-black italic tracking-tighter uppercase">{user.username}</span>
+                            <span className="text-[10px] bg-primary-500/20 text-primary-400 px-1.5 rounded uppercase tracking-widest font-bold border border-primary-500/30">CODING</span>
+                        </div>
+                        <div className="w-full max-w-[140px] h-1.5 bg-gray-900 rounded-full mt-1.5 overflow-hidden ml-auto border border-gray-800 shadow-inner">
+                            <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${playerProgress}%` }}
+                                className="h-full bg-gradient-to-l from-primary-400 to-primary-600 shadow-[0_0_10px_rgba(0,242,255,0.8)] relative" 
+                            />
+                        </div>
+                        <div className="flex justify-between text-[8px] mt-1 text-gray-500 uppercase font-black tracking-widest">
+                            <span>{playerProgress}%</span>
+                            <span>Progress</span>
+                        </div>
                     </div>
-                  ))}
+                    <div className="relative z-10">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-bl from-primary-500 to-blue-800 p-[2px] shadow-[0_0_10px_rgba(0,242,255,0.3)]">
+                            <div className="w-full h-full rounded-full bg-gray-900 flex items-center justify-center overflow-hidden text-xs font-bold text-white uppercase">
+                                {user.username.charAt(0)}
+                            </div>
+                        </div>
+                        <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-success-500 rounded-full border-2 border-[#080b14]" />
+                    </div>
                 </div>
-              </div>
-            )}
-          </div>
 
-          {/* Code Editor */}
-          <div className="w-1/2 flex flex-col bg-gray-950">
-            <div className="px-4 py-2 bg-gray-800 border-b border-gray-700 text-sm text-gray-400 font-mono shrink-0">
-              solution.{selectedLanguage === 'javascript' ? 'js' : selectedLanguage === 'cpp' ? 'cpp' : selectedLanguage === 'python' ? 'py' : selectedLanguage === 'java' ? 'java' : selectedLanguage}
+                {/* Timer */}
+                <div className="flex flex-col items-center mx-6 min-w-[100px] z-20">
+                    <motion.span 
+                        animate={{ scale: timeLeft <= 60 ? [1, 1.05, 1] : 1, color: timeLeft <= 60 ? '#ff3366' : '#ffffff' }}
+                        transition={{ duration: 1, repeat: timeLeft <= 60 ? Infinity : 0 }}
+                        className="text-3xl font-mono font-bold tracking-[0.1em] leading-none drop-shadow-md"
+                    >
+                        {mins}:{secs}
+                    </motion.span>
+                    <span className="text-[9px] text-gray-500 font-black uppercase tracking-[0.2em] mt-1 text-center">Time Left</span>
+                </div>
+
+                {/* Player 2 Stats */}
+                <div className="flex items-center justify-start gap-3 bg-white/5 rounded-xl px-3 py-1.5 border border-white/5 flex-1 w-full relative overflow-hidden group">
+                    <div className="absolute inset-0 bg-gradient-to-l from-transparent to-secondary-500/5 group-hover:to-secondary-500/10 pointer-events-none transition-colors" />
+                    <div className="relative z-10">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-secondary-500 to-purple-800 p-[2px] shadow-[0_0_10px_rgba(188,0,255,0.3)]">
+                            <div className="w-full h-full rounded-full bg-gray-900 flex items-center justify-center overflow-hidden text-xs font-bold text-white uppercase">
+                                {opponent?.username?.charAt(0) || '?'}
+                            </div>
+                        </div>
+                        <div className="absolute -bottom-1 -left-1 w-3.5 h-3.5 bg-yellow-500 rounded-full border-2 border-[#080b14]" />
+                    </div>
+                    <div className="text-left flex-1 z-10">
+                        <div className="flex items-center gap-2 justify-start">
+                            <span className={`text-[10px] px-1.5 rounded uppercase tracking-widest font-bold border ${opponentProgress === 100 ? 'bg-secondary-500/20 text-secondary-400 border-secondary-500/30 animate-pulse' : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30'}`}>
+                                {opponentProgress === 100 ? 'SUBMITTED' : 'CODING'}
+                            </span>
+                            <span className="text-sm font-black italic tracking-tighter uppercase truncate max-w-[100px]">{opponent?.username || 'Opponent'}</span>
+                        </div>
+                        <div className="w-full max-w-[140px] h-1.5 bg-gray-900 rounded-full mt-1.5 overflow-hidden border border-gray-800 shadow-inner">
+                            <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${opponentProgress}%` }}
+                                className="h-full bg-gradient-to-r from-secondary-400 to-secondary-600 shadow-[0_0_10px_rgba(188,0,255,0.8)] relative" 
+                            />
+                        </div>
+                        <div className="flex justify-between text-[8px] mt-1 text-gray-500 uppercase font-black tracking-widest">
+                            <span>Progress</span>
+                            <span>{opponentProgress}%</span>
+                        </div>
+                    </div>
+                </div>
+
             </div>
-            <textarea
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              className="flex-1 w-full bg-gray-950 text-gray-100 p-4 font-mono text-sm resize-none focus:outline-none leading-relaxed"
-              placeholder={`// Write your ${selectedLanguage} solution here...\n// Read from stdin, write to stdout`}
-              spellCheck={false}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-            />
-          </div>
-        </div>
 
-        {/* Crypto Betting Panel */}
-        {cryptoBetting && matchId && (
-          <div className="shrink-0 border-t border-gray-700 p-4 bg-gray-800">
-            <BettingPanel matchId={matchId} onBetPlaced={(amount) => toast.success(`Bet placed: ${amount} ETH`)} disabled={false} />
-          </div>
-        )}
+            {/* Right Status */}
+            <div className="hidden lg:flex items-center gap-4">
+                <div className="flex flex-col items-end">
+                    <div className="flex items-center gap-1.5">
+                        <span className="relative flex h-2 w-2">
+                        <span className="animate-ping-slow absolute inline-flex h-full w-full rounded-full bg-danger-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-danger-500"></span>
+                        </span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-danger-500 bg-danger-500/10 px-2 py-0.5 rounded border border-danger-500/20">Live Match</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        {/* --- MAIN CONTENT (Triple Pane Split) --- */}
+        <main className="flex flex-1 overflow-hidden min-h-0 bg-[#0a0e18]">   
+            {/* Left Column: Problem description */}
+            <section className="w-full max-w-[40%] flex flex-col border-r border-[#1e2535] bg-[#080b14] z-10 shrink-0">
+                <div className="p-6 overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-white/10">
+                    <div className="flex items-center justify-between mb-4">
+                        <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white leading-tight pr-4">{problem.title}</h1>
+                        <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border shrink-0 ${
+                            problem.difficulty === 'Easy' ? 'bg-success-500/10 text-success-500 border-success-500/20' : 
+                            problem.difficulty === 'Medium' ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' : 
+                            'bg-danger-500/10 text-danger-500 border-danger-500/20'
+                        }`}>
+                            {problem.difficulty}
+                        </span>
+                    </div>
+
+                    <div className="text-gray-300 text-sm leading-relaxed mb-8 font-medium">
+                        {problem.description}
+                    </div>
+
+                    {problem.constraints && (
+                        <div className="mb-8">
+                            <h3 className="text-[10px] font-black text-primary-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2 border-b border-[#1e2535] pb-2">
+                                <Settings size={14} className="text-primary-500" /> System Constraints
+                            </h3>
+                            <div className="text-xs font-mono text-gray-400 bg-black border border-[#1e2535] rounded-xl p-4 leading-loose shadow-inner whitespace-pre-wrap">
+                                {problem.constraints}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Test Cases Output View */}
+                    {testResults.length > 0 && (
+                        <div className="mb-8">
+                            <div className="flex justify-between items-center mb-4 border-b border-[#1e2535] pb-2">
+                                <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                    <Terminal size={14} /> Execution Matrix
+                                </h3>
+                                <span className="text-[10px] font-bold font-mono bg-white/5 px-2 py-1 rounded">
+                                    {testResults.filter((r:any) => r.passed).length} / {testResults.length} PASSED
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                {testResults.map((r: any, i: number) => (
+                                    <div key={i} className={`border rounded-lg p-3 flex flex-col group transition-all ${
+                                        r.passed ? 'bg-success-900/10 border-success-500/20' : 'bg-danger-900/10 border-danger-500/30'
+                                    }`}>
+                                        <div className="flex items-center justify-between w-full">
+                                            <div className="flex items-center gap-2.5">
+                                                {r.passed ? <CheckCircle2 size={16} className="text-success-500 drop-shadow-[0_0_5px_rgba(0,255,136,0.5)]" /> : <XCircle size={16} className="text-danger-500 drop-shadow-[0_0_5px_rgba(255,51,102,0.5)]" />}
+                                                <span className={`text-xs font-bold tracking-wide ${r.passed ? 'text-gray-300' : 'text-danger-100'}`}>Test #{i+1}</span>
+                                            </div>
+                                            <span className="text-[10px] font-mono text-gray-500">
+                                                {r.runtime ? `${r.runtime.toFixed(3)}s` : '-'}
+                                            </span>
+                                        </div>
+                                        {!r.passed && (
+                                            <div className="mt-3 pt-3 border-t border-danger-500/20 text-xs font-mono text-gray-400 space-y-1 bg-black/40 p-2 rounded">
+                                                <div className="flex items-start gap-2"><span className="text-danger-400 font-bold w-16">Input:</span><span className="flex-1 break-all">{problem?.testCases?.[i]?.input || 'Hidden'}</span></div>
+                                                <div className="flex items-start gap-2"><span className="text-success-400 font-bold w-16">Expected:</span><span className="flex-1 break-all">{problem?.testCases?.[i]?.expectedOutput || 'Hidden'}</span></div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </section>
+
+            {/* Middle Column: Code Editor Space bg-black/40 */}
+            <section className="flex-1 flex flex-col bg-[#0a0e18] relative shadow-inner overflow-hidden min-w-0">
+                {/* Tab Bar */}
+                <div className="flex items-center justify-between border-b border-[#1e2535] bg-[#080b14] px-2 shrink-0">
+                    <div className="flex">
+                        <div className="px-6 py-3 border-b-2 border-primary-500 bg-[#111827] flex items-center gap-2 cursor-pointer shadow-[inset_0_-10px_20px_rgba(0,242,255,0.03)] transition-colors">
+                            <div className="w-3 h-3 rounded-full bg-primary-500/20 flex items-center justify-center border border-primary-500/50">
+                                <div className="w-1.5 h-1.5 rounded-full bg-primary-500 shadow-[0_0_5px_rgba(0,242,255,0.8)]" />
+                            </div>
+                            <span className="text-xs font-mono font-bold tracking-tight text-white">{selectedLanguage === 'python' ? 'main.py' : selectedLanguage === 'javascript' ? 'solution.js' : 'Solution.java'}</span>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3 pr-2">
+                        <div className="flex items-center gap-1.5 text-[9px] uppercase font-bold text-gray-500 tracking-widest bg-white/5 px-2 py-1 rounded">
+                            <Volume2 size={12} className="text-gray-400" />
+                            <span>VIM</span>
+                        </div>
+                        <div className="text-gray-500 cursor-pointer p-1.5 hover:bg-white/10 hover:text-white rounded-md transition-colors"><Settings size={14} /></div>
+                    </div>
+                </div>
+
+                {/* Monaco / Editor Container */}
+                <div className="flex-1 overflow-hidden relative">
+                    <CodeEditor
+                        value={code}
+                        onChange={setCode}
+                        language={selectedLanguage}
+                        readOnly={false}
+                        height="100%"
+                    />
+
+                    {/* Overlays */}
+                    {opponentProgress === 100 && (
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.9, x: 20 }} 
+                            animate={{ opacity: 1, scale: 1, x: 0 }}
+                            className="absolute top-4 right-4 z-20 pointer-events-none"
+                        >
+                            <div className="flex bg-[#11081a]/90 backdrop-blur-xl px-4 py-3 rounded-xl border border-secondary-500/40 items-center gap-3 animate-pulse-glow shadow-2xl">
+                                <div className="w-8 h-8 rounded-full border-2 border-secondary-500 bg-secondary-900 flex items-center justify-center text-xs font-bold uppercase overflow-hidden">
+                                     {opponent?.username?.charAt(0) || '?'}
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-black text-secondary-400 tracking-[0.2em] uppercase">Alert</span>
+                                    <span className="text-xs font-bold text-white">Opponent Submitted!</span>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </div>
+            </section>
+        </main>
+
+        {/* --- FOOTER --- */}
+        <footer className="h-14 bg-[#080b14] border-t border-[#1e2535] px-6 flex items-center justify-between z-10 shrink-0">
+            {/* Left Tools */}
+            <div className="flex items-center gap-6 hidden sm:flex">
+                <button 
+                  onClick={requestHint}
+                  className="flex items-center gap-2 text-[10px] font-black text-gray-500 hover:text-primary-400 transition-colors uppercase tracking-[0.1em] group"
+                >
+                    <Lightbulb size={16} className="text-gray-600 group-hover:text-primary-400 group-hover:drop-shadow-[0_0_8px_rgba(0,242,255,0.8)] transition-all" />
+                    <span>Request Hint</span>
+                </button>
+                <button 
+                  onClick={forfeitMatch}
+                  className="flex items-center gap-2 text-[10px] font-black text-gray-500 hover:text-red-500 transition-colors uppercase tracking-[0.1em] group"
+                >
+                    <XCircle size={16} className="text-gray-600 group-hover:text-red-500 group-hover:drop-shadow-[0_0_8px_rgba(239,68,68,0.8)] transition-all" />
+                    <span>Forfeit</span>
+                </button>
+            </div>
+
+            {/* Center Actions */}
+            <div className="flex items-center gap-4 justify-center flex-1">
+                <button 
+                    onClick={runTests}
+                    disabled={submitting}
+                    className="px-6 py-2.5 bg-[#111827] hover:bg-[#1a2333] transition-colors rounded-lg flex items-center gap-2 text-xs font-black uppercase tracking-widest border border-[#1e2535] hover:border-gray-600 text-gray-300 disabled:opacity-50"
+                >
+                    <Play size={14} className={submitting ? "animate-pulse" : ""} /> {submitting ? 'TESTING...' : 'RUN TESTS'}
+                </button>
+                <button 
+                    onClick={submitCode}
+                    disabled={submitting}
+                    className="px-8 py-2.5 bg-gradient-to-r from-primary-600 to-primary-400 hover:from-primary-500 hover:to-primary-300 transition-all rounded-lg flex items-center gap-2 text-xs font-black uppercase tracking-[0.15em] text-white shadow-[0_0_15px_rgba(0,242,255,0.3)] hover:shadow-[0_0_20px_rgba(0,242,255,0.5)] disabled:opacity-50 border border-primary-400/50"
+                >
+                    <Send size={14} /> SUBMIT SOLUTION
+                </button>
+            </div>
+
+            {/* Right Meta */}
+            <div className="flex items-center gap-8 hidden md:flex">
+                <div className="flex flex-col items-end">
+                    <span className="text-[8px] text-gray-600 font-black uppercase tracking-widest">Environment</span>
+                    <span className="text-[10px] text-gray-400 font-mono font-bold">{selectedLanguage}</span>
+                </div>
+                <div className="flex flex-col items-end min-w-[60px]">
+                    <span className="text-[8px] text-gray-600 font-black uppercase tracking-widest">Connection</span>
+                    <span className="text-[10px] text-success-400 font-mono font-bold drop-shadow-[0_0_5px_rgba(0,255,136,0.3)]">SECURE</span>
+                </div>
+            </div>
+        </footer>
       </div>
     );
   }

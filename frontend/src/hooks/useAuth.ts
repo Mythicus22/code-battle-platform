@@ -101,6 +101,7 @@ export function useAuth() {
   async function logout() {
     await auth.logout();
     setUser(null);
+    window.location.href = '/login';
   }
 
   return { user, loading, login, signup, logout, refetch: checkAuth };

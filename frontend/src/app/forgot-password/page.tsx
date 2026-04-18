@@ -74,7 +74,8 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-red-900 to-gray-900 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#080b14] flex items-center justify-center px-4 relative">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary-900/10 rounded-full blur-[120px] pointer-events-none" />
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -87,7 +88,7 @@ export default function ForgotPasswordPage() {
         >
           <Link
             href="/login"
-            className="inline-flex items-center text-gray-400 hover:text-red-400 transition-colors"
+            className="inline-flex items-center text-gray-400 hover:text-primary-400 transition-colors cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Login
@@ -97,19 +98,19 @@ export default function ForgotPasswordPage() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gray-800/80 backdrop-blur-xl rounded-2xl p-8 shadow-2xl border border-gray-700/50"
+          className="bg-[#0d1117]/80 backdrop-blur-xl rounded-3xl p-8 md:p-10 shadow-[0_0_40px_rgba(0,0,0,0.5)] border border-[#1e2535] relative"
         >
           <div className="text-center mb-8">
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
-              className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-red-500 to-orange-600 rounded-full mb-4"
+              className="inline-flex items-center justify-center w-16 h-16 bg-[#080b14] rounded-2xl border border-[#2a3040] mb-4 shadow-inner"
             >
-              {step === 'email' && <Mail className="w-8 h-8 text-white" />}
-              {step === 'otp' && <Shield className="w-8 h-8 text-white" />}
-              {step === 'reset' && <Lock className="w-8 h-8 text-white" />}
+              {step === 'email' && <Mail className="w-8 h-8 text-primary-500" />}
+              {step === 'otp' && <Shield className="w-8 h-8 text-primary-500" />}
+              {step === 'reset' && <Lock className="w-8 h-8 text-primary-500" />}
             </motion.div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-red-400 to-orange-400 bg-clip-text text-transparent mb-2">
+            <h1 className="text-3xl font-black bg-gradient-to-r from-primary-400 to-secondary-500 bg-clip-text text-transparent mb-2 uppercase tracking-tight">
               {step === 'email' && 'Reset Password'}
               {step === 'otp' && 'Verify Code'}
               {step === 'reset' && 'New Password'}
@@ -124,7 +125,7 @@ export default function ForgotPasswordPage() {
                   placeholder="Enter your email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-gray-800/50 border border-gray-600 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:border-red-500 focus:outline-none transition-all"
+                  className="w-full bg-[#080b14] border border-[#2a3040] rounded-xl px-4 py-4 text-white placeholder-gray-600 focus:border-primary-500 focus:ring-1 focus:ring-primary-500/50 focus:outline-none transition-all shadow-inner"
                   required
                   disabled={loading}
                 />
@@ -133,7 +134,7 @@ export default function ForgotPasswordPage() {
                 type="submit"
                 disabled={loading}
                 whileHover={{ scale: 1.02 }}
-                className="w-full bg-gradient-to-r from-red-500 to-orange-600 text-white font-bold py-4 rounded-xl flex items-center justify-center disabled:opacity-50"
+                className="w-full bg-gradient-to-r from-primary-600 to-primary-400 text-white font-bold tracking-widest uppercase text-sm py-4 rounded-xl disabled:opacity-50 shadow-[0_0_20px_rgba(0,242,255,0.3)] transition-all hover:scale-[1.02] flex justify-center items-center"
               >
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Send Reset Code'}
               </motion.button>
@@ -147,7 +148,7 @@ export default function ForgotPasswordPage() {
                 placeholder="Enter 6-digit code"
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                className="w-full bg-gray-800/50 border border-gray-600 rounded-xl px-4 py-3 text-white text-center text-2xl tracking-widest focus:border-red-500 focus:outline-none"
+                className="w-full bg-[#080b14] border border-[#2a3040] rounded-xl px-4 py-4 text-primary-400 text-center text-3xl tracking-[0.5em] font-black focus:border-primary-500 focus:ring-1 focus:ring-primary-500/50 focus:outline-none shadow-inner"
                 maxLength={6}
                 required
               />
@@ -155,7 +156,7 @@ export default function ForgotPasswordPage() {
                 type="submit"
                 disabled={otp.length !== 6}
                 whileHover={{ scale: 1.02 }}
-                className="w-full bg-gradient-to-r from-red-500 to-orange-600 text-white font-bold py-4 rounded-xl disabled:opacity-50"
+                className="w-full bg-gradient-to-r from-primary-600 to-primary-400 text-white font-bold tracking-widest uppercase text-sm py-4 rounded-xl disabled:opacity-50 shadow-[0_0_20px_rgba(0,242,255,0.3)] transition-all hover:scale-[1.02]"
               >
                 Verify Code
               </motion.button>
@@ -170,7 +171,7 @@ export default function ForgotPasswordPage() {
                   placeholder="New password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full bg-gray-800/50 border border-gray-600 rounded-xl px-4 py-3 pr-12 text-white focus:border-red-500 focus:outline-none"
+                  className="w-full bg-[#080b14] border border-[#2a3040] rounded-xl px-4 py-4 pr-12 text-white placeholder-gray-600 focus:border-primary-500 focus:ring-1 focus:ring-primary-500/50 focus:outline-none shadow-inner"
                   required
                   minLength={6}
                 />
@@ -187,14 +188,14 @@ export default function ForgotPasswordPage() {
                 placeholder="Confirm password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full bg-gray-800/50 border border-gray-600 rounded-xl px-4 py-3 text-white focus:border-red-500 focus:outline-none"
+                className="w-full bg-[#080b14] border border-[#2a3040] rounded-xl px-4 py-4 text-white placeholder-gray-600 focus:border-primary-500 focus:ring-1 focus:ring-primary-500/50 focus:outline-none shadow-inner"
                 required
               />
               <motion.button
                 type="submit"
                 disabled={loading}
                 whileHover={{ scale: 1.02 }}
-                className="w-full bg-gradient-to-r from-red-500 to-orange-600 text-white font-bold py-4 rounded-xl flex items-center justify-center disabled:opacity-50"
+                className="w-full bg-gradient-to-r from-primary-600 to-primary-400 text-white font-bold tracking-widest uppercase text-sm py-4 rounded-xl disabled:opacity-50 shadow-[0_0_20px_rgba(0,242,255,0.3)] transition-all hover:scale-[1.02] flex justify-center items-center mt-6"
               >
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Reset Password'}
               </motion.button>

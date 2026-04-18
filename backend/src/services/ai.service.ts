@@ -28,11 +28,19 @@ class AIService {
       // Unique session per request so Lyzr doesn't reuse context
       const sessionId = `${this.agentId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
+      const prompt = `You are an elite competitive programming algorithm setter. Generate a unique coding problem identically formatted to LeetCode/GFG equivalents.
+    Difficulty requirement based on user trophies (${trophies}): ${this.getDifficultyByTrophies(trophies)}.
+    Language requested: ${language}.
+    Provide a robust narrative.
+    CRITICALLY: You MUST generate EXACTLY between 10 to 15 rigorous test cases (basic, standard, extreme edge cases) strictly matching the I/O formatting.
+    Output ONLY raw valid JSON conforming exactly to this structure:
+    { "title": "", "description": "", "difficulty": "", "time_limit": <num_minutes>, "constraints": "", "hint": "", "test_cases": [{ "input": "", "expected_output": "" }] }`;
+
       const response = await axios.post(this.baseUrl, {
         user_id: 'devanshparti@gmail.com',
         agent_id: this.agentId,
         session_id: sessionId,
-        message: `Generate a programming problem for trophies: ${trophies} and language: ${language}`
+        message: prompt
       }, {
         headers: {
           'Content-Type': 'application/json',
@@ -86,6 +94,12 @@ class AIService {
         { input: '5\n-1 0 1 2 3', expected_output: '5' },
         { input: '1\n42', expected_output: '42' },
         { input: '4\n10 20 30 40', expected_output: '100' },
+        { input: '0\n', expected_output: '0' },
+        { input: '2\n-100 100', expected_output: '0' },
+        { input: '6\n1 1 1 1 1 1', expected_output: '6' },
+        { input: '3\n100 -50 25', expected_output: '75' },
+        { input: '2\n999 1', expected_output: '1000' },
+        { input: '10\n1 2 3 4 5 6 7 8 9 10', expected_output: '55' }
       ],
       generation_notes: `Mock fallback: ${difficulty} ${language} problem.`
     };

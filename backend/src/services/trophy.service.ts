@@ -18,12 +18,15 @@ export async function updateMatchStats(
   winnerId: string,
   loserId: string
 ): Promise<void> {
+  // Generate random trophy amount between 40 and 50
+  const randomTrophies = Math.floor(Math.random() * 11) + 40;
+
   // Update winner
   await User.findByIdAndUpdate(winnerId, {
     $inc: {
       totalGames: 1,
       wins: 1,
-      trophies: env.TROPHY_WIN_AMOUNT,
+      trophies: randomTrophies,
     },
   });
 
@@ -32,7 +35,7 @@ export async function updateMatchStats(
     $inc: {
       totalGames: 1,
       losses: 1,
-      trophies: -env.TROPHY_LOSS_AMOUNT,
+      trophies: -randomTrophies,
     },
   });
 

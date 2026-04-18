@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document, Types } from 'mongoose';
  export interface IUser extends Document {
  username: string;
  email: string;
@@ -17,6 +17,8 @@ import mongoose, { Schema, Document } from 'mongoose';
  bestRuntime?: number;
  createdAt: Date;
  updatedAt: Date;
+ friends: Types.ObjectId[];
+ friendRequests: Types.ObjectId[];
  // Virtual properties
  winrate: string;
  arena: number;
@@ -80,6 +82,8 @@ import mongoose, { Schema, Document } from 'mongoose';
     },
     lastBetDate: Date,
     bestRuntime: Number,
+    friends: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+    friendRequests: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   },
   {
     timestamps: true,

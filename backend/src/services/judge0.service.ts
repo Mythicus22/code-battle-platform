@@ -1,17 +1,7 @@
 import axios from 'axios';
 import env from '../config/env';
 
-interface SubmissionResult {
-  status: {
-    id: number;
-    description: string;
-  };
-  stdout?: string;
-  stderr?: string;
-  compile_output?: string;
-  time?: string;
-  memory?: number;
-}
+
 
 const JUDGE0_HEADERS = env.JUDGE0_API_KEY
   ? {
@@ -19,61 +9,6 @@ const JUDGE0_HEADERS = env.JUDGE0_API_KEY
       'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com',
     }
   : {};
-
-export async function submitCode(
-  code: string,
-  languageId: number,
-  stdin: string,
-  expectedOutput: string
-): Promise<SubmissionResult> {
-  try {
-    const response = await axios.post(
-      `${env.JUDGE0_API_URL}/submissions`,
-      {
-        source_code: code,
-        language_id: languageId,
-        stdin,
-        expected_output: expectedOutput.trim(),
-      },
-      {
-        headers: JUDGE0_HEADERS,
-        params: { base64_encoded: false, wait: false },
-      }
-    );
-
-    const token = response.data.token;
-    return await pollSubmission(token);
-  } catch (error: any) {
-    console.error('Judge0 submission error:', error);
-    throw new Error('Failed to submit code for execution');
-  }
-}
-
-async function pollSubmission(token: string, maxRetries = 30): Promise<SubmissionResult> {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const response = await axios.get(
-        `${env.JUDGE0_API_URL}/submissions/${token}`,
-        {
-          headers: JUDGE0_HEADERS,
-          params: { base64_encoded: false },
-        }
-      );
-
-      const result = response.data;
-      // Status IDs: 1-2 = In Queue/Processing, 3 = Accepted, 4+ = Error
-      if (result.status.id > 2) {
-        return result;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    } catch (error) {
-      console.error('Judge0 polling error:', error);
-    }
-  }
-
-  throw new Error('Submission timeout');
-}
 
 export async function executeTestCases(
   code: string,
@@ -89,42 +24,76 @@ export async function executeTestCases(
     error?: string;
   }>
 > {
-  const results = [];
+  // Batch Submissions implementation for Judge0
+  try {
+    const submissionsPayload = testCases.map((tc) => ({
+      source_code: code,
+      language_id: languageId,
+      stdin: tc.input,
+      expected_output: tc.expectedOutput.trim(),
+    }));
 
-  for (let i = 0; i < testCases.length; i++) {
-    const testCase = testCases[i];
-    try {
-      const result = await submitCode(
-        code,
-        languageId,
-        testCase.input,
-        testCase.expectedOutput
-      );
+    const response = await axios.post(
+      `${env.JUDGE0_API_URL}/submissions/batch`,
+      { submissions: submissionsPayload },
+      {
+        headers: JUDGE0_HEADERS,
+        params: { base64_encoded: false },
+      }
+    );
 
-      // Status 3 = Accepted (Judge0 already compares with expected_output)
-      // Also do manual trim comparison as fallback
+    const tokens = response.data.map((item: any) => item.token).join(',');
+    
+    // Poll the batch status
+    let allFinished = false;
+    let finalResults: any[] = [];
+    
+    for (let i = 0; i < 30; i++) {
+        const batchResponse = await axios.get(`${env.JUDGE0_API_URL}/submissions/batch`, {
+            headers: JUDGE0_HEADERS,
+            params: { tokens, base64_encoded: false }
+        });
+        
+        const results = batchResponse.data.submissions;
+        const allDone = results.every((r: any) => r.status && r.status.id > 2);
+        
+        if (allDone) {
+            allFinished = true;
+            finalResults = results;
+            break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+
+    if (!allFinished) {
+        throw new Error('Batch submission timeout');
+    }
+
+    return finalResults.map((result, i) => {
+      const tc = testCases[i];
       const passed =
         result.status.id === 3 ||
-        (result.stdout?.trim() === testCase.expectedOutput.trim());
+        (result.stdout?.trim() === tc.expectedOutput.trim());
 
-      results.push({
+      return {
         testCase: i + 1,
         passed,
         runtime: result.time ? parseFloat(result.time) : undefined,
         memory: result.memory,
         output: result.stdout,
         error: result.stderr || result.compile_output,
-      });
-    } catch (error) {
-      results.push({
+      };
+    });
+
+  } catch (error) {
+    console.error('Batch execution error:', error);
+    // Fallback failure response for all test cases
+    return testCases.map((_, i) => ({
         testCase: i + 1,
         passed: false,
-        error: 'Execution error',
-      });
-    }
+        error: 'Execution error or batch rate limit reached',
+    }));
   }
-
-  return results;
 }
 
 // Language IDs (common ones)

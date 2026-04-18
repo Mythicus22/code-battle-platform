@@ -67,6 +67,7 @@ export const users = {
   getBadges: () => api.get('/users/badges'),
   getMatches: (page = 1) => api.get(`/users/matches?page=${page}`),
   getRemainingBets: () => api.get('/users/bets'),
+  getFriends: () => api.get('/users/friends'),
   connectMetaMask: (address: string) =>
     api.post('/users/connect-metamask', { address }),
 };

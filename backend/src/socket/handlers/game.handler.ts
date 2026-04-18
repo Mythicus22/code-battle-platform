@@ -195,6 +195,58 @@ export function registerGameHandlers(io: Server, socket: Socket): void {
     }
   });
 
+  socket.on('forfeit_match', async (data: { matchId: string }) => {
+    try {
+      const userId = socket.data.userId;
+      const { matchId } = data;
+
+      const match = await Match.findById(matchId);
+      if (!match || match.status !== 'IN_PROGRESS') return;
+
+      const isPlayer1 = match.player1.toString() === userId;
+      if (isPlayer1) {
+        match.player1Disqualified = true; // Mark forfeit as disqualified
+      } else {
+        match.player2Disqualified = true;
+      }
+
+      match.status = 'COMPLETED';
+      match.winner = isPlayer1 ? match.player2 : match.player1;
+      match.endedAt = new Date();
+      await match.save();
+
+      // Update stats
+      const winnerId = match.winner.toString();
+      await updateMatchStats(winnerId, userId);
+      const newBadges = await checkAndAwardBadges(winnerId);
+
+      const winnerUser = await User.findById(winnerId).select('trophies badges username _id');
+      const loserUser = await User.findById(userId).select('trophies badges username _id');
+
+      const roomId = `match:${matchId}`;
+      io.to(roomId).emit('game_end', {
+        reason: 'forfeit',
+        winner: winnerId,
+        disqualifiedPlayer: userId,
+      });
+
+      if (winnerUser) {
+        io.to(`user:${winnerId}`).emit('trophies:updated', { userId: winnerId, trophies: winnerUser.trophies });
+        if (newBadges && newBadges.length > 0) {
+          io.to(`user:${winnerId}`).emit('badges:awarded', { userId: winnerId, badges: newBadges, badgesFull: winnerUser.badges });
+          io.to(`user:${winnerId}`).emit('user:updated', { user: winnerUser });
+        }
+      }
+
+      if (loserUser) {
+        io.to(`user:${userId}`).emit('trophies:updated', { userId: userId, trophies: loserUser.trophies });
+        io.to(`user:${userId}`).emit('user:updated', { user: loserUser });
+      }
+    } catch (error) {
+      console.error('Forfeit error:', error);
+    }
+  });
+
   socket.on('request_hint', async (data: { matchId: string }) => {
     try {
       const match = await Match.findById(data.matchId);

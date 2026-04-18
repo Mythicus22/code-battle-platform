@@ -238,8 +238,10 @@ export async function login(req: Request, res: Response): Promise<void> {
   try {
     const { email, password } = req.body;
 
-    // Find user
-    const user = await User.findOne({ email });
+    // Find user by email or username
+    const user = await User.findOne({
+      $or: [{ email: email }, { username: email }]
+    });
     if (!user) {
       res.status(404).json({ error: 'Account not found with us. Please sign up first.' });
       return;
@@ -290,6 +292,53 @@ export async function login(req: Request, res: Response): Promise<void> {
 export async function logout(_req: Request, res: Response): Promise<void> {
   res.clearCookie('token');
   res.json({ message: 'Logout successful' });
+}
+
+export async function oauthLogin(req: Request, res: Response): Promise<void> {
+  try {
+    const { email, name, providerId } = req.body;
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      // Create new user mapped from NextAuth OAuth
+      const baseUsername = name ? name.replace(/\s+/g, '').toLowerCase() : email.split('@')[0];
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      
+      user = await User.create({
+        username: `${baseUsername}_${randomSuffix}`,
+        email,
+        password: await hashPassword(providerId + Math.random().toString()), // random inaccessible password
+        isVerified: true, // OAuth is already verified
+      });
+    }
+
+    const token = generateAccessToken({
+      userId: user._id.toString(),
+      email: user.email,
+    });
+
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      message: 'OAuth Login successful',
+      token, // Return token specifically so NextAuth can hold it in JWT
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        trophies: user.trophies,
+        arena: user.arena,
+      },
+    });
+  } catch (error) {
+    console.error('OAuth Login error:', error);
+    res.status(500).json({ error: 'Failed to authenticate via OAuth' });
+  }
 }
 
 export async function getMe(req: Request, res: Response): Promise<void> {
