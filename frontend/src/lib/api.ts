@@ -68,8 +68,7 @@ export const users = {
   getMatches: (page = 1) => api.get(`/users/matches?page=${page}`),
   getRemainingBets: () => api.get('/users/bets'),
   getFriends: () => api.get('/users/friends'),
-  connectMetaMask: (address: string) =>
-    api.post('/users/connect-metamask', { address }),
+  searchUsers: (query: string) => api.get(`/users/search?q=${query}`),
 };
 
 // Game endpoints
@@ -83,6 +82,11 @@ export const ai = {
   generateProblem: (trophies: number) =>
     api.post('/ai/problem', { trophies }),
   getHint: (problemId: string) => api.post('/ai/hint', { problemId }),
+};
+
+// Chat endpoints
+export const chat = {
+  getHistory: () => api.get('/chat/history'),
 };
 
 export default api;

@@ -1,43 +1,66 @@
 'use client';
 
+import GlobalDialogs from './GlobalDialogs';
 import { usePathname } from 'next/navigation';
 import { SessionProvider } from 'next-auth/react';
-import { useAuth } from '@/hooks/useAuth';
-import { AIAssistant } from '../chat/AIAssistant';
 import Navbar from './Navbar';
-import Sidebar from './Sidebar';
+import FriendsSidebar from './FriendsSidebar';
+import { AIAssistant } from '../chat/AIAssistant';
+import { useState, createContext, useContext } from 'react';
+import { Toaster } from 'react-hot-toast';
+import { AuthProvider } from '@/hooks/useAuth';
+import Footer from './Footer';
+
+export const UIContext = createContext({
+  isCommLinkOpen: false,
+  toggleCommLink: () => {},
+  hideSidebar: false,
+  setHideSidebar: (val: boolean) => {},
+});
+
+export function useUI() {
+  return useContext(UIContext);
+}
 
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isLandingPage = pathname === '/';
   
-  // Actually, wait, the user's requirement:
-  // "navbar should be shown on the game page aswell it should only be hidden on the code editor page where we are actually doing the coding"
-  // So we don't hide the navbar on `/game` immediately, but inside the Game components when state is IN_GAME we dispatch an event or use fullscreen
-  // Since we use fullscreen API, fullscreen automatically hides the Navbar AND Sidebar! 
-  // Perfect. We do NOT need to manually hide them on /game route.
-  
-  const hideAIAssistant = pathname === '/' || pathname.startsWith('/game');
+  const [hideSidebar, setHideSidebar] = useState(false);
+  const showSidebar = !hideSidebar && ['/dashboard', '/rankings', '/chat', '/game'].some(p => pathname?.startsWith(p));
+
+  const [isCommLinkOpen, setIsCommLinkOpen] = useState(false);
+  const toggleCommLink = () => setIsCommLinkOpen(!isCommLinkOpen);
+
+  const showNavbar = !pathname?.startsWith('/game') && !isLandingPage;
 
   return (
     <SessionProvider>
-      <div className="flex flex-col min-h-screen bg-[#080b14] text-white overflow-hidden">
-        {/* Top Navbar spans the entire width */}
-        {!isLandingPage && <Navbar />}
+      <AuthProvider>
+        <UIContext.Provider value={{ isCommLinkOpen, toggleCommLink, hideSidebar, setHideSidebar }}>
+          <div className="flex flex-col min-h-screen bg-[#080b14] text-white overflow-hidden">
+            {showNavbar && <Navbar />}
 
-        <div className="flex flex-1 overflow-hidden relative">
-            {/* Sidebar sits under the Navbar on the left */}
-            {!isLandingPage && <Sidebar />}
+            <GlobalDialogs />
+            <Toaster position="top-right" toastOptions={{ style: { background: '#121826', color: '#fff', border: '1px solid #2a3040' } }} />
 
-            {/* Main Content Area */}
-            <main className="flex-1 overflow-x-hidden overflow-y-auto w-full relative">
-              {children}
-            </main>
+            <div className="flex flex-1 overflow-hidden relative">
+                <main className="flex-1 overflow-x-hidden overflow-y-auto w-full relative">
+                  {children}
+                </main>
+                
+                {showSidebar && (
+                  <div className="w-[320px] shrink-0 border-l border-[#1e2535] bg-[#0d1117] relative z-20 flex flex-col">
+                    <FriendsSidebar />
+                  </div>
+                )}
+            </div>
 
-            {/* AI Floating Assistant */}
-            {!hideAIAssistant && <AIAssistant />}
-        </div>
-      </div>
+            {showNavbar && <Footer />}
+            <AIAssistant isOpen={isCommLinkOpen} onClose={() => setIsCommLinkOpen(false)} />
+          </div>
+        </UIContext.Provider>
+      </AuthProvider>
     </SessionProvider>
   );
 }

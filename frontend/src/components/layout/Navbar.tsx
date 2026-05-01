@@ -2,96 +2,167 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { Bell, FolderGit2, LogOut } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { MessageSquare, Trophy, Swords, LayoutDashboard, LogOut, User } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import { useAuth } from '@/hooks/useAuth';
+import { useState } from 'react';
+import { useUI } from './LayoutWrapper';
 
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const { data: session } = useSession();
   const { user, logout } = useAuth();
-  
+  const { toggleCommLink } = useUI();
   const currentUser = session?.user || user;
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const handleLogout = async () => {
-    if (session) {
-      await signOut({ redirect: false });
-    }
+    setProfileOpen(false);
+    if (session) await signOut({ redirect: false });
     await logout();
-    window.location.href = '/login';
   };
 
+  const navLinks = [
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/game', label: 'Arena', icon: Swords },
+    { href: '/rankings', label: 'Leaderboard', icon: Trophy },
+  ];
+
   return (
-    <nav className="sticky top-0 z-50 w-full bg-[#080b14] border-b border-[#1e2535]">
-      <div className="flex items-center justify-between h-20 px-8">
-        
+    <nav className="sticky top-0 z-50 w-full bg-[#080b14]/95 backdrop-blur-md border-b border-[#1e2535]">
+      <div className="flex items-center justify-between h-16 px-6">
+
         {/* Logo */}
-        <Link href="/" className="flex items-center">
-          <span className="text-2xl font-black tracking-widest text-[#00f2ff] uppercase drop-shadow-[0_0_8px_rgba(0,242,255,0.8)]">
-            CODE_BATTLE_ARENA
+        <Link href="/" className="flex items-center gap-2 shrink-0">
+          <div className="w-8 h-8 bg-[#00f2ff]/10 border border-[#00f2ff]/30 rounded-lg flex items-center justify-center">
+            <Swords size={16} className="text-[#00f2ff]" />
+          </div>
+          <span className="text-sm font-black tracking-widest text-white uppercase hidden sm:block">
+            Code<span className="text-[#00f2ff]">Battle</span>
           </span>
         </Link>
 
         {/* Nav Links */}
-        <div className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
-          <NavLink href="/dashboard" text="DASHBOARD" currentPath={pathname} />
-          <NavLink href="/rankings" text="LEADERBOARD" currentPath={pathname} />
-          <NavLink href="/lobby" text="LOBBY" currentPath={pathname} />
-          <NavLink href="/game" text="ARENA" currentPath={pathname} />
+        <div className="hidden md:flex items-center gap-1">
+          {navLinks.map(({ href, label, icon: Icon }) => {
+            const isActive = pathname === href || pathname.startsWith(`${href}/`);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${
+                  isActive
+                    ? 'text-[#00f2ff] bg-[#00f2ff]/10'
+                    : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                }`}
+              >
+                <Icon size={14} />
+                {label}
+                {isActive && (
+                  <motion.div
+                    layoutId="nav_active"
+                    className="absolute inset-0 rounded-lg border border-[#00f2ff]/30"
+                  />
+                )}
+              </Link>
+            );
+          })}
         </div>
 
-        {/* Auth / Actions */}
-        <div className="flex items-center gap-6">
+        {/* Right Actions */}
+        <div className="flex items-center gap-3">
           {currentUser ? (
-            <div className="flex items-center gap-6">
-              <button className="text-gray-400 hover:text-[#00f2ff] transition-colors relative">
-                <Bell size={18} />
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-              </button>
-              <button className="text-gray-400 hover:text-[#00f2ff] transition-colors">
-                <FolderGit2 size={18} />
-              </button>
-              <div className="flex items-center gap-4 pl-6 border-l border-[#1e2535]">
-                <div className="w-10 h-10 rounded bg-gradient-to-b from-gray-700 to-gray-900 border border-gray-600 flex items-center justify-center cursor-pointer hover:border-[#00f2ff] transition-colors overflow-hidden">
-                   <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix&backgroundColor=b6e3f4" alt="avatar" className="w-full h-full object-cover opacity-80" />
-                </div>
-                <button onClick={handleLogout} className="text-red-500 opacity-60 hover:opacity-100 hover:text-red-400 font-bold text-xs uppercase tracking-widest transition-opacity" title="Disconnect">
-                  Logout
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-4">
-              <Link href="/login" className="text-xs font-black uppercase tracking-[0.2em] text-gray-400 hover:text-white transition-colors py-2 px-3">
-                Log In
+            <>
+              {/* Global Chat */}
+              <Link
+                href="/chat"
+                className="flex items-center gap-2 px-3 py-2 bg-[#bc00ff]/10 border border-[#bc00ff]/30 rounded-lg text-[#bc00ff] hover:bg-[#bc00ff]/20 transition-all text-xs font-bold uppercase tracking-widest"
+              >
+                <MessageSquare size={14} />
+                <span className="hidden sm:block">Global Chat</span>
               </Link>
-              <Link href="/login" className="text-xs font-black uppercase tracking-[0.2em] bg-primary-600/10 border border-primary-500/50 hover:bg-primary-500 hover:border-primary-400 text-white px-5 py-2.5 rounded-lg transition-all shadow-[0_0_15px_rgba(0,242,255,0.2)]">
-                Initialize
+
+              {/* Notification Bell */}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => toast('Pending requests will appear as Global Overlays!', { icon: '🔔' })}
+                className="flex items-center justify-center w-8 h-8 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-500 hover:bg-amber-500/20 transition-all relative"
+              >
+                <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+              </motion.button>
+
+              {/* Profile */}
+              <div className="relative">
+                <button
+                  onClick={() => setProfileOpen(!profileOpen)}
+                  className="flex items-center gap-2 pl-3 border-l border-[#1e2535]"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-[#080b14] border border-[#1e2535] flex items-center justify-center overflow-hidden hover:border-[#00f2ff]/50 transition-colors">
+                    <img
+                      src={(currentUser as any)?.profilePicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${(currentUser as any)?.username || currentUser?.name || 'user'}&backgroundColor=121826`}
+                      alt="avatar"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="hidden sm:block text-left">
+                    <div className="text-xs font-bold text-white leading-none">
+                      {(currentUser as any)?.username || currentUser?.name || 'Player'}
+                    </div>
+                    <div className="text-[10px] text-[#00f2ff] font-bold mt-0.5">
+                      {(currentUser as any)?.trophies?.toLocaleString() || user?.trophies?.toLocaleString() || '0'} 🏆
+                    </div>
+                  </div>
+                </button>
+
+                <AnimatePresence>
+                  {profileOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 top-full mt-2 w-44 bg-[#0d1117] border border-[#1e2535] rounded-xl shadow-2xl overflow-hidden z-50"
+                    >
+                      <Link
+                        href="/dashboard"
+                        onClick={() => setProfileOpen(false)}
+                        className="flex items-center gap-3 px-4 py-3 text-xs font-bold text-gray-400 hover:text-white hover:bg-white/5 transition-colors uppercase tracking-widest"
+                      >
+                        <User size={14} /> Profile
+                      </Link>
+                      <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-xs font-bold text-red-500 hover:text-red-400 hover:bg-red-500/10 transition-colors uppercase tracking-widest border-t border-[#1e2535]"
+                      >
+                        <LogOut size={14} /> Logout
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-3">
+              <Link
+                href="/login"
+                className="text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white transition-colors px-3 py-2"
+              >
+                Login
+              </Link>
+              <Link
+                href="/login"
+                className="text-xs font-bold uppercase tracking-widest bg-[#00f2ff]/10 border border-[#00f2ff]/40 text-[#00f2ff] hover:bg-[#00f2ff]/20 px-4 py-2 rounded-lg transition-all"
+              >
+                Sign Up
               </Link>
             </div>
           )}
         </div>
-
       </div>
     </nav>
-  );
-}
-
-function NavLink({ href, text, currentPath }: any) {
-  const isActive = currentPath === href || currentPath.startsWith(`${href}/`);
-  return (
-    <Link 
-      href={href}
-      className={`px-5 py-7 text-xs font-bold uppercase tracking-[0.15em] transition-all relative
-        ${isActive ? 'text-[#00f2ff]' : 'text-gray-500 hover:text-gray-300'}
-      `}
-    >
-      <div className="relative z-10">{text}</div>
-      {isActive && (
-        <motion.div layoutId="nav_underline" className="absolute bottom-0 left-0 right-0 h-1 bg-[#00f2ff] shadow-[0_0_10px_rgba(0,242,255,0.8)]" />
-      )}
-    </Link>
   );
 }

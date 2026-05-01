@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSocket } from '@/hooks/useSocket';
-import { useMetaMask } from '@/hooks/useMetaMask';
+import { useAptos } from '@/hooks/useAptos';
 import { useBetting } from '@/hooks/useBetting';
 import { ARENAS, getArenaByTrophies } from '@/constants/arenas';
 import RightSidebar from '@/components/game/RightSidebar';
@@ -22,17 +22,21 @@ import toast from 'react-hot-toast';
 
 type GameState = 'lobby' | 'matchmaking' | 'in_game';
 
+import { useUI } from '@/components/layout/LayoutWrapper';
+
 export default function GamePage() {
   const router = useRouter();
   const { user, loading } = useAuth();
   const { emit, on, off, connected } = useSocket();
-  const { connected: metaMaskConnected, connect } = useMetaMask();
+  const { connected: aptosConnected, connect } = useAptos();
   const { bettingState, settleBet, resetBetting } = useBetting();
+  const { setHideSidebar } = useUI();
 
   const [gameState, setGameState] = useState<GameState>('lobby');
   const [showWeaponModal, setShowWeaponModal] = useState(false);
   const [challengingFriendId, setChallengingFriendId] = useState<{id: string, username: string} | null>(null);
-  const [betAmount, setBetAmount] = useState(0);
+  const [matchMode, setMatchMode] = useState<'normal' | 'betting'>('normal');
+  const [betAmount, setBetAmount] = useState(1);
   const [cryptoBetting, setCryptoBetting] = useState(false);
   const [cryptoBetAmount, setCryptoBetAmount] = useState('0.01');
   const [selectedLanguage, setSelectedLanguage] = useState('javascript');
@@ -43,6 +47,16 @@ export default function GamePage() {
   const [code, setCode] = useState('');
   const [testResults, setTestResults] = useState<any[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [aptPrice, setAptPrice] = useState(8.50); // Default fallback
+
+  useEffect(() => {
+    fetch('https://api.coingecko.com/api/v3/simple/price?ids=aptos&vs_currencies=usd')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.aptos?.usd) setAptPrice(data.aptos.usd);
+      })
+      .catch(err => console.error('Failed to fetch APT price:', err));
+  }, []);
   const [opponentProgress, setOpponentProgress] = useState(0);
   const [playerProgress, setPlayerProgress] = useState(0);
 
@@ -56,6 +70,14 @@ export default function GamePage() {
   useEffect(() => { matchIdRef.current = matchId; }, [matchId]);
   useEffect(() => { cryptoBettingRef.current = cryptoBetting; }, [cryptoBetting]);
   useEffect(() => { opponentRef.current = opponent; }, [opponent]);
+
+  // Handle sidebar visibility
+  useEffect(() => {
+    if (gameState === 'in_game') setHideSidebar(true);
+    else setHideSidebar(false);
+  }, [gameState, setHideSidebar]);
+
+  const fullscreenExitsRef = useRef(0);
 
   // Fullscreen lock when in_game
   useEffect(() => {
@@ -90,11 +112,26 @@ export default function GamePage() {
     };
     window.addEventListener('keydown', blockKeys);
 
+    let fullscreenTimeout: NodeJS.Timeout | null = null;
+
     // Detect fullscreen exit and re-enter
     const onFullscreenChange = () => {
       if (!document.fullscreenElement && gameState === 'in_game') {
-        toast.error('⚠️ Stay in fullscreen during the battle!');
-        setTimeout(() => enterFullscreen(), 500);
+        toast.error('⚠️ WARNING: You exited fullscreen! Return within 10 seconds or you will be disqualified!', { duration: 10000 });
+        fullscreenTimeout = setTimeout(() => {
+            if (!document.fullscreenElement && gameState === 'in_game') {
+               toast.error('❌ Disqualified! You failed to return to fullscreen.');
+               if (matchIdRef.current) {
+                 emit('forfeit_match', { matchId: matchIdRef.current });
+               }
+               setGameState('lobby');
+            }
+        }, 10000);
+      } else if (document.fullscreenElement && gameState === 'in_game') {
+        if (fullscreenTimeout) {
+           clearTimeout(fullscreenTimeout);
+           toast.success('Returned to fullscreen. Resume battle!');
+        }
       }
     };
     document.addEventListener('fullscreenchange', onFullscreenChange);
@@ -107,7 +144,7 @@ export default function GamePage() {
         document.exitFullscreen().catch(() => {});
       }
     };
-  }, [gameState]);
+  }, [gameState, emit]);
 
   // Socket event handlers (stable refs via useCallback)
   const handleMatchFound = useCallback((data: any) => {
@@ -209,58 +246,12 @@ export default function GamePage() {
     toast.error(data.message || 'An error occurred');
   }, []);
 
-  const handleChallengeSent = useCallback((data: any) => {
-    setGameState('matchmaking');
-    toast.success(data.message || 'Challenge sent. Waiting for friend to accept...');
-  }, []);
-
-  const handleFriendChallenged = useCallback((data: any) => {
-    // Show a toast with an option to accept
-    toast.custom((t) => (
-      <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-gray-900 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5`}>
-        <div className="flex-1 w-0 p-4">
-          <div className="flex items-start">
-            <div className="flex-1">
-              <p className="text-sm font-medium text-white">⚔️ Challenge from {data.challengerUsername}!</p>
-              <p className="mt-1 text-sm text-gray-400">Bet: {data.cryptoBetting ? `${data.cryptoBetAmount} ETH` : `$${data.betAmount}`} | Language: {data.language}</p>
-            </div>
-          </div>
-        </div>
-        <div className="flex border-l border-gray-700">
-          <button onClick={() => {
-              emit('accept_challenge', { challengerId: data.challengerId, language: data.language });
-              toast.dismiss(t.id);
-            }} className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-primary-400 hover:text-primary-300 focus:outline-none">
-            Accept
-          </button>
-        </div>
-      </div>
-    ), { duration: 15000 });
-  }, [emit]);
-
-  const handleFriendRequestReceived = useCallback((data: any) => {
-    toast.custom((t) => (
-      <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-gray-900 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5`}>
-        <div className="flex-1 w-0 p-4">
-          <p className="text-sm font-medium text-white">👋 Friend request from {data.fromUsername}!</p>
-        </div>
-        <div className="flex border-l border-gray-700">
-          <button onClick={() => {
-              emit('accept_friend_request', { requesterId: data.fromUserId });
-              toast.dismiss(t.id);
-            }} className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-success-500 hover:text-success-400">
-            Accept
-          </button>
-        </div>
-      </div>
-    ), { duration: 15000 });
-  }, [emit]);
-
   const handleFriendRequestAccepted = useCallback((data: any) => {
     toast.success(data.message || 'Friend request accepted!');
   }, []);
 
   // Register/unregister socket listeners
+  // Note: challenge_sent, friend_challenged, friend_request_received are handled by GlobalDialogs
   useEffect(() => {
     if (!user) return;
     on('match_found', handleMatchFound);
@@ -270,9 +261,6 @@ export default function GamePage() {
     on('game_end', handleGameEnd);
     on('tab_switch_warning', handleTabSwitchWarning);
     on('hint', handleHint);
-    on('challenge_sent', handleChallengeSent);
-    on('friend_challenged', handleFriendChallenged);
-    on('friend_request_received', handleFriendRequestReceived);
     on('friend_request_accepted', handleFriendRequestAccepted);
     on('error', handleError);
     return () => {
@@ -283,13 +271,10 @@ export default function GamePage() {
       off('game_end', handleGameEnd);
       off('tab_switch_warning', handleTabSwitchWarning);
       off('hint', handleHint);
-      off('challenge_sent', handleChallengeSent);
-      off('friend_challenged', handleFriendChallenged);
-      off('friend_request_received', handleFriendRequestReceived);
       off('friend_request_accepted', handleFriendRequestAccepted);
       off('error', handleError);
     };
-  }, [user, on, off, handleMatchFound, handleGameStart, handleSubmissionResult, handleOpponentSubmitted, handleGameEnd, handleTabSwitchWarning, handleHint, handleError, handleChallengeSent, handleFriendChallenged, handleFriendRequestReceived, handleFriendRequestAccepted]);
+  }, [user, on, off, handleMatchFound, handleGameStart, handleSubmissionResult, handleOpponentSubmitted, handleGameEnd, handleTabSwitchWarning, handleHint, handleError, handleFriendRequestAccepted]);
 
   // Visibility change (tab switch) detection during game
   useEffect(() => {
@@ -317,23 +302,34 @@ export default function GamePage() {
 
   async function proceedToMatchmaking() {
     if (!connected) { toast.error('Not connected to server'); return; }
-    if (cryptoBetting && !metaMaskConnected) {
-      try { await connect(); } catch { toast.error('MetaMask required for crypto betting'); return; }
+    if (matchMode === 'betting') {
+      if (!('aptos' in window)) {
+        toast.error('Petra Wallet required for betting mode. Please install it.');
+        return;
+      }
+      try {
+        await (window as any).aptos.connect();
+      } catch {
+        toast.error('Failed to connect Petra Wallet.');
+        return;
+      }
     }
-    setShowWeaponModal(false);
     
     if (challengingFriendId) {
       emit('challenge_friend', { 
         friendId: challengingFriendId.id, 
-        betAmount: cryptoBetting ? 0 : betAmount, 
+        betAmount: matchMode === 'betting' ? betAmount : 0, 
         language: selectedLanguage, 
-        cryptoBetting,
-        cryptoBetAmount: cryptoBetting ? cryptoBetAmount : '0'
+        cryptoBetting: matchMode === 'betting',
       });
       setChallengingFriendId(null);
     } else {
       setGameState('matchmaking');
-      emit('join_matchmaking', { betAmount: cryptoBetting ? 0 : betAmount, language: selectedLanguage, cryptoBetting });
+      emit('join_matchmaking', { 
+        betAmount: matchMode === 'betting' ? betAmount : 0, 
+        language: selectedLanguage, 
+        cryptoBetting: matchMode === 'betting' 
+      });
     }
   }
 
@@ -345,7 +341,7 @@ export default function GamePage() {
   function cancelMatchmaking() {
     emit('leave_matchmaking');
     setGameState('lobby');
-    toast('Matchmaking cancelled');
+    toast.error('Matchmaking cancelled');
   }
 
   function forfeitMatch() {
@@ -392,120 +388,139 @@ export default function GamePage() {
 
   // ── LOBBY ──────────────────────────────────────────────────────────────────
   if (gameState === 'lobby') {
+      const aptosConversionRate = 1 / aptPrice;
+
       return (
-        <div className="min-h-screen bg-[#080b14] text-white">
-          <WeaponSelectionModal
-            isOpen={showWeaponModal}
-            selectedLanguage={selectedLanguage}
-            onLanguageSelect={setSelectedLanguage}
-            onConfirm={proceedToMatchmaking}
-            onCancel={cancelWeaponModal}
-          />
-  
-          <div className="max-w-[1600px] mx-auto px-4 lg:px-8 py-8 h-screen flex flex-col">
-            {/* Header */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-8 shrink-0">
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-black italic tracking-tighter mb-2 drop-shadow-md">
-                BATTLE ARENA
-              </h1>
-              <p className="text-sm md:text-base text-gray-500 font-bold uppercase tracking-widest">Prove your skills • {user.trophies} 🏆</p>
-            </motion.div>
-  
-            {/* Main Layout Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 min-h-0">
-                
-              {/* Left Column: Battle Setup (Arena details & Stakes) */}
-              <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="lg:col-span-1 flex flex-col gap-6 overflow-y-auto pr-2 pb-8 scrollbar-thin scrollbar-thumb-white/10">
-                
-                {/* Arena Card */}
-                <div className="bg-[#111827] border border-gray-800 rounded-3xl p-6 relative overflow-hidden shadow-2xl group flex-shrink-0">
-                   <div className="absolute inset-0 opacity-10 bg-gradient-to-br from-primary-500 to-transparent pointer-events-none group-hover:opacity-20 transition-opacity" />
-                   <div className="relative z-10 flex flex-col space-y-4">
-                      <div className="flex items-center space-x-4">
-                        <div className="text-4xl filter drop-shadow-[0_0_15px_rgba(0,242,255,0.4)]">{currentArena.icon}</div>
-                        <div>
-                          <h2 className="text-2xl font-black italic tracking-tighter uppercase" style={{ color: currentArena.color }}>
-                              {currentArena.name}
-                          </h2>
-                          <div className="text-[10px] text-gray-400 font-bold tracking-widest uppercase">Current District</div>
-                        </div>
-                      </div>
-                      <p className="text-xs text-gray-500 border-t border-gray-800/50 pt-4 font-medium">{currentArena.description}</p>
+        <div className="min-h-screen bg-[#080b14] text-white font-sans flex flex-col p-8 overflow-x-hidden relative">
+          
+          <header className="flex justify-between items-start mb-8 z-10 pl-[300px]">
+            <div>
+              <h1 className="text-3xl font-black tracking-widest uppercase mb-1">ARENA_LOBBY</h1>
+              <div className="text-[10px] text-gray-500 font-mono tracking-widest uppercase flex items-center gap-2">
+                <span className="w-1.5 h-1.5 bg-[#00f2ff] rounded-full animate-pulse" />
+                ESTABLISHING SECURE CONNECTION...
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] text-gray-500 font-mono tracking-widest uppercase mb-1">CURRENT ARENA</div>
+              <div className="text-sm font-black tracking-widest uppercase text-cyan-400">
+                SECTOR {currentArena.id} // {currentArena.name}
+              </div>
+            </div>
+          </header>
+
+          <div className="flex flex-1 relative gap-8 max-w-[1400px] mx-auto w-full">
+            {/* Arena Trajectory Left Sidebar */}
+            <div className="w-[280px] shrink-0 border-r border-[#1e2535] pr-6 flex flex-col gap-4 overflow-y-auto custom-scrollbar h-[calc(100vh-140px)]">
+               <h3 className="text-xs font-black tracking-widest uppercase text-gray-500 mb-2">Arena Trajectory</h3>
+               {ARENAS.map((arena, i) => {
+                 const isUnlocked = user.trophies >= arena.minTrophies;
+                 const isCurrent = currentArena.id === arena.id;
+                 return (
+                   <div key={arena.id} className={`flex items-center gap-4 p-3 rounded-xl border transition-all ${isCurrent ? 'bg-cyan-900/20 border-cyan-500 shadow-[0_0_15px_rgba(0,242,255,0.2)]' : isUnlocked ? 'bg-[#121826] border-[#1e2535]' : 'bg-[#080b14] border-[#1e2535] opacity-50 grayscale'}`}>
+                     <div className="w-12 h-12 rounded overflow-hidden shrink-0 border border-[#2a3040]">
+                        <img src={arena.icon} className="w-full h-full object-cover" />
+                     </div>
+                     <div>
+                       <div className={`text-xs font-black uppercase ${isCurrent ? 'text-cyan-400' : isUnlocked ? 'text-white' : 'text-gray-600'}`}>{arena.name}</div>
+                       <div className="text-[9px] text-gray-500 font-mono mt-1">{arena.minTrophies} TR</div>
+                     </div>
                    </div>
-                </div>
-  
-                {/* Stakes Card */}
-                <div className="bg-[#111827] border border-gray-800 rounded-3xl p-6 shadow-2xl flex flex-col min-h-0 flex-shrink-0">
-                   <h3 className="text-sm font-black uppercase tracking-widest text-white mb-6 border-b border-gray-800/50 pb-4 flex items-center gap-2">
-                       <Target className="w-4 h-4 text-secondary-500" /> Wager Protocol
-                   </h3>
-                   
-                   <div className="space-y-6">
-                      {/* Mode Toggle */}
-                      <div className="flex bg-gray-900 border border-gray-800 rounded-xl p-1">
-                          <button
-                           onClick={() => setCryptoBetting(false)}
-                           className={`flex-1 py-3 text-xs font-black tracking-widest uppercase rounded-lg transition-all ${!cryptoBetting ? 'bg-primary-600 text-white shadow-[0_0_15px_rgba(0,242,255,0.4)]' : 'text-gray-500 hover:text-gray-300'}`}
-                          >
-                           XP Score
-                          </button>
-                          <button
-                           onClick={() => setCryptoBetting(true)}
-                           className={`flex-1 py-3 text-xs font-black tracking-widest uppercase rounded-lg transition-all ${cryptoBetting ? 'bg-secondary-600 text-white shadow-[0_0_15px_rgba(188,0,255,0.4)]' : 'text-gray-500 hover:text-gray-300'}`}
-                          >
-                           Crypto (Ξ)
-                          </button>
-                      </div>
-  
-                      {/* Amount Selection Grid */}
-                      <div>
-                          <label className="text-[10px] font-black tracking-widest uppercase text-gray-500 mb-3 block">Configure Stake</label>
-                          <div className="grid grid-cols-2 gap-3">
-                              {!cryptoBetting ? (
-                                  [0, 1, 5, 10, 20].map((amount) => (
-                                      <button key={amount} onClick={() => setBetAmount(amount)}
-                                        className={`py-3 rounded-xl border font-black transition-all ${betAmount === amount ? 'bg-primary-600/10 border-primary-500 text-primary-400 shadow-[0_0_10px_rgba(0,242,255,0.2)]' : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-700'}`}
-                                      >
-                                          {amount === 0 ? 'FREE BRAWL' : `$${amount}`}
-                                      </button>
-                                  ))
-                              ) : (
-                                  ['0.01', '0.05', '0.1', '0.2'].map((amount) => (
-                                      <button key={amount} onClick={() => setCryptoBetAmount(amount)}
-                                        className={`py-3 rounded-xl border font-black transition-all ${cryptoBetAmount === amount ? 'bg-secondary-600/10 border-secondary-500 text-secondary-400 shadow-[0_0_10px_rgba(188,0,255,0.2)]' : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-700'}`}
-                                      >
-                                          {amount} ETH
-                                      </button>
-                                  ))
-                              )}
-                          </div>
-                      </div>
-                      
-                      <motion.button
-                         whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                         onClick={startMatchmaking} disabled={!connected}
-                         className="w-full mt-4 bg-gradient-to-r from-primary-600 to-primary-400 hover:from-primary-500 hover:to-primary-300 disabled:opacity-50 text-white font-black py-4 rounded-xl flex justify-center items-center gap-2 uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(0,242,255,0.3)] transition-all"
-                      >
-                         <Play size={18} className="fill-current" /> {connected ? 'Initialize Match' : 'Connecting...'}
-                      </motion.button>
-                   </div>
+                 );
+               })}
+            </div>
+
+            {/* Main Center */}
+            <div className="flex-1 flex flex-col max-w-[800px]">
+              <motion.div 
+                 initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                 className="w-full bg-[#121826] border border-[#1e2535] rounded-xl p-2 shadow-2xl relative overflow-hidden mb-6"
+              >
+                {/* Map background */}
+                <div 
+                  className="w-full h-[300px] bg-[#0a0e18] rounded-lg border border-[#1e2535] relative overflow-hidden flex flex-col items-center justify-center bg-cover bg-center"
+                  style={{ backgroundImage: `url('/arenas/arena_${currentArena.id}.png')` }}
+                >
+                  <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px] pointer-events-none" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#080b14] via-transparent to-transparent pointer-events-none" />
+                  
+                  <h2 className="text-4xl font-black tracking-tighter uppercase italic text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.8)] z-10 mb-2">
+                    {currentArena.name}
+                  </h2>
+                  <div className="bg-[#080b14]/80 backdrop-blur-md border border-[#1e2535] px-6 py-2 rounded text-[10px] font-black tracking-widest uppercase z-10 shadow-lg">
+                    REWARD: <span className="text-[#00f2ff]">+25 TR</span> // <span className="text-[#ff3366]">-25 TR</span>
+                  </div>
                 </div>
               </motion.div>
-  
-              {/* Center Column: Interactive Map Grid */}
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-2 bg-[#111827] border border-gray-800 rounded-3xl overflow-hidden shadow-2xl min-h-[400px]">
-                <ArenaMapView userTrophies={user.trophies} currentArenaId={currentArena.id} />
-              </motion.div>
-  
-              {/* Right Column: Active Social / Leaderboard */}
-              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="lg:col-span-1 overflow-y-auto pb-8 scrollbar-thin scrollbar-thumb-white/10 hidden lg:block">
-                <RightSidebar 
-                  onChallengeFriend={(id, username) => {
-                    setChallengingFriendId({id, username});
-                    setShowWeaponModal(true);
-                  }} 
-                />
-              </motion.div>
+
+              {/* Mode Selection */}
+              <div className="bg-[#121826] border border-[#1e2535] rounded-xl p-6 mb-6">
+                 <h3 className="text-xs font-black tracking-widest uppercase text-white mb-4">Combat Protocol</h3>
+                 <div className="flex gap-4 mb-6">
+                    <button 
+                      onClick={() => setMatchMode('normal')}
+                      className={`flex-1 py-4 rounded-xl border transition-all text-sm font-black uppercase tracking-widest ${matchMode === 'normal' ? 'bg-cyan-500/10 border-cyan-500 text-cyan-400' : 'bg-[#080b14] border-[#2a3040] text-gray-500 hover:border-gray-500'}`}
+                    >
+                      Normal (Trophies Only)
+                    </button>
+                    <button 
+                      onClick={() => setMatchMode('betting')}
+                      className={`flex-1 py-4 rounded-xl border transition-all text-sm font-black uppercase tracking-widest ${matchMode === 'betting' ? 'bg-purple-500/10 border-purple-500 text-purple-400 shadow-[0_0_20px_rgba(188,0,255,0.2)]' : 'bg-[#080b14] border-[#2a3040] text-gray-500 hover:border-gray-500'}`}
+                    >
+                      Betting (High Stakes)
+                    </button>
+                 </div>
+
+                 {matchMode === 'betting' && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mb-6">
+                      <div className="flex justify-between items-center mb-2">
+                         <span className="text-xs text-gray-400 uppercase tracking-widest">Select Wager Amount</span>
+                         <span className="text-lg font-black text-purple-400">${betAmount} <span className="text-xs text-gray-500">({(betAmount * aptosConversionRate).toFixed(4)} APT)</span></span>
+                      </div>
+                      <input 
+                        type="range" min="1" max="10" step="1" 
+                        value={betAmount} 
+                        onChange={(e) => setBetAmount(parseInt(e.target.value))}
+                        className="w-full accent-purple-500 h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer"
+                      />
+                      <div className="flex justify-between text-[10px] text-gray-600 mt-2 font-mono">
+                        <span>$1 (Min)</span><span>$10 (Max)</span>
+                      </div>
+                    </motion.div>
+                 )}
+
+                 <motion.button
+                   whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                   onClick={proceedToMatchmaking} disabled={!connected}
+                   className="w-full bg-[#729cff] hover:bg-[#86abff] text-[#080b14] py-4 rounded-xl text-sm font-black tracking-widest uppercase shadow-[0_0_20px_rgba(114,156,255,0.3)] hover:shadow-[0_0_30px_rgba(114,156,255,0.5)] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                 >
+                   <Play size={18} className="fill-current" /> {connected ? 'COMMENCE INFILTRATION' : 'CONNECTING...'}
+                 </motion.button>
+              </div>
+
+              {/* Arsenal Selection */}
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-4 border-b border-[#1e2535] pb-2">
+                  <h3 className="text-xs font-black tracking-widest uppercase text-gray-400">ARSENAL SELECTION</h3>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {[
+                    { id: 'javascript', name: 'JavaScript', sub: 'ES2022' },
+                    { id: 'python', name: 'Python', sub: '3.10' },
+                    { id: 'rust', name: 'Rust', sub: '1.68' },
+                    { id: 'cpp', name: 'C++', sub: '11.2' },
+                  ].map(lang => (
+                    <button 
+                      key={lang.id} onClick={() => setSelectedLanguage(lang.id)}
+                      className={`flex flex-col items-start p-3 border rounded-xl transition-all ${
+                        selectedLanguage === lang.id ? 'bg-blue-900/20 border-[#729cff] shadow-[0_0_15px_rgba(114,156,255,0.2)]' : 'bg-[#121826] border-[#1e2535] hover:border-gray-600'
+                      }`}
+                    >
+                      <span className={`text-xs font-black tracking-widest uppercase ${selectedLanguage === lang.id ? 'text-[#729cff]' : 'text-gray-400'}`}>{lang.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>

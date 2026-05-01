@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, Lock, Mail, Github, Chrome, Fingerprint, ArrowLeft, Cpu, Eye, EyeOff, X, Shield, Swords } from 'lucide-react';
+import { User, Lock, Mail, Github, Chrome, Fingerprint, ArrowLeft, Cpu, Eye, EyeOff, X, Shield, Swords, Check } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import OTPVerification from '@/components/auth/OTPVerification';
 import toast from 'react-hot-toast';
@@ -13,8 +13,8 @@ import { signIn } from 'next-auth/react';
 const PROTOCOL_TERMS = [
   { title: 'Fair Play Mandate', body: 'All participants must compete using only their own code. External tools, AI assistants, or pre-written solutions are strictly prohibited during active matches.' },
   { title: 'Account Integrity', body: 'One account per person. Sharing, selling, or transferring accounts results in permanent ban. Your identity is your rank.' },
-  { title: 'Crypto Wagers', body: 'All ETH bets are final once placed on-chain. The platform takes a 2% commission. Disputes are resolved by smart contract logic, not human arbitration.' },
-  { title: 'Data & Privacy', body: 'We store your email, username, and match history. No personal data is sold. Wallet addresses are stored only if you connect MetaMask.' },
+  { title: 'Crypto Wagers', body: 'All APT bets are final once placed on-chain. The platform takes a 0.1% fee. Disputes are resolved by smart contract logic, not human arbitration.' },
+  { title: 'Data & Privacy', body: 'We store your email, username, and match history. No personal data is sold. Wallet addresses are stored only if you connect Petra Wallet.' },
 ];
 
 const ARENA_ETHICS = [
@@ -92,12 +92,32 @@ export default function AuthPage() {
 
   const [step, setStep] = useState<'form' | 'otp'>('form');
   const [signupData, setSignupData] = useState({ username: '', email: '', password: '', confirm: '' });
+  const [profilePic, setProfilePic] = useState<File | null>(null);
+  const [profilePicPreview, setProfilePicPreview] = useState<string | null>(null);
   const [showSignupPw, setShowSignupPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [signupLoading, setSignupLoading] = useState(false);
 
   const [dialog, setDialog] = useState<'protocol' | 'ethics' | null>(null);
   const [activeSide, setActiveSide] = useState<'login' | 'signup' | null>(null);
+
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [ethicsAccepted, setEthicsAccepted] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+
+  const connectPetraWallet = async () => {
+    try {
+      if ('aptos' in window) {
+        const response = await (window as any).aptos.connect();
+        setWalletAddress(response.address);
+        toast.success('Petra Wallet connected!');
+      } else {
+        toast.error('Petra Wallet not found. Please install the extension.');
+      }
+    } catch (err) {
+      toast.error('Failed to connect Petra Wallet');
+    }
+  };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,6 +142,10 @@ export default function AuthPage() {
 
   const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!termsAccepted || !ethicsAccepted) {
+       toast.error('You must acknowledge the Protocol Terms and Arena Ethics.');
+       return;
+    }
     if (signupData.password !== signupData.confirm) { toast.error('Passwords do not match'); return; }
     if (signupData.password.length < 6) { toast.error('Password must be at least 6 characters'); return; }
     setSignupLoading(true);
@@ -147,7 +171,24 @@ export default function AuthPage() {
         <div className="w-full max-w-md bg-[#121625]/80 backdrop-blur-xl border border-white/10 rounded-3xl p-8 relative z-10 shadow-2xl">
           <h2 className="text-3xl font-bold text-purple-500 mb-2">Verify Neural Link</h2>
           <p className="text-gray-400 text-sm mb-6">Enter the access sequence sent to {signupData.email}</p>
-          <OTPVerification email={signupData.email} onSuccess={() => router.push('/dashboard')} />
+          <OTPVerification email={signupData.email} onSuccess={async () => {
+             // Upload profile picture if provided
+             if (profilePic) {
+               try {
+                 const { default: api } = await import('@/lib/api');
+                 const formData = new FormData();
+                 formData.append('profilePicture', profilePic);
+                 await api.post('/users/avatar', formData, {
+                   headers: { 'Content-Type': 'multipart/form-data' }
+                 });
+                 toast.success('Profile picture uploaded successfully!');
+               } catch (err) {
+                 console.error('Avatar upload failed', err);
+                 toast.error('Failed to upload profile picture');
+               }
+             }
+             router.push('/dashboard');
+          }} />
         </div>
       </div>
     );
@@ -260,6 +301,25 @@ export default function AuthPage() {
           <p className="text-gray-400 text-sm mb-8 leading-relaxed">Join the next generation of competitive coders. High-speed battles await.</p>
 
           <form onSubmit={handleSignupSubmit} className="space-y-4">
+            
+            <div className="flex flex-col items-center mb-6">
+              <label className="cursor-pointer group relative">
+                 <div className={`w-20 h-20 rounded-full border-2 border-dashed ${profilePicPreview ? 'border-secondary-500' : 'border-gray-600'} flex items-center justify-center overflow-hidden bg-[#080b14] group-hover:border-secondary-500 transition-colors`}>
+                    {profilePicPreview ? (
+                       <img src={profilePicPreview} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                       <span className="text-[10px] text-gray-500 group-hover:text-secondary-500 uppercase font-black tracking-widest text-center px-2">Avatar</span>
+                    )}
+                 </div>
+                 <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setProfilePic(e.target.files[0]);
+                      setProfilePicPreview(URL.createObjectURL(e.target.files[0]));
+                    }
+                 }} />
+              </label>
+            </div>
+
             <div className="relative">
               <Fingerprint className={`absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${activeSide === 'signup' ? 'text-secondary-500' : 'text-gray-500'}`} />
               <input
@@ -317,23 +377,51 @@ export default function AuthPage() {
               </div>
             </div>
 
-            <div className="flex items-start space-x-2 text-xs pt-2">
-              <input type="checkbox" required className="w-3.5 h-3.5 mt-0.5 bg-[#080b14] border border-[#2a3040] rounded-sm text-secondary-600 focus:ring-0 focus:ring-offset-0 shrink-0" />
-              <span className="text-gray-400 leading-relaxed">
-                I agree to the{' '}
-                <button type="button" onClick={() => setDialog('protocol')} className="text-secondary-500 hover:underline">Protocol Terms</button>
-                {' '}and{' '}
-                <button type="button" onClick={() => setDialog('ethics')} className="text-secondary-500 hover:underline">Arena Ethics</button>.
-              </span>
+            <div className="space-y-2 pt-2">
+              <label className="flex items-center space-x-3 cursor-pointer group">
+                <div className="relative flex items-center justify-center">
+                  <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} className="peer sr-only" />
+                  <div className="w-5 h-5 border-2 border-gray-600 rounded bg-[#080b14] peer-checked:bg-secondary-500 peer-checked:border-secondary-500 transition-all flex items-center justify-center">
+                    <Check className="w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100" />
+                  </div>
+                </div>
+                <span className="text-xs text-gray-400 font-medium select-none group-hover:text-gray-300">
+                  I acknowledge the <span className="text-secondary-500 hover:underline" onClick={(e) => { e.preventDefault(); setDialog('protocol'); }}>Protocol Terms</span>
+                </span>
+              </label>
+
+              <label className="flex items-center space-x-3 cursor-pointer group">
+                <div className="relative flex items-center justify-center">
+                  <input type="checkbox" checked={ethicsAccepted} onChange={(e) => setEthicsAccepted(e.target.checked)} className="peer sr-only" />
+                  <div className="w-5 h-5 border-2 border-gray-600 rounded bg-[#080b14] peer-checked:bg-secondary-500 peer-checked:border-secondary-500 transition-all flex items-center justify-center">
+                    <Check className="w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100" />
+                  </div>
+                </div>
+                <span className="text-xs text-gray-400 font-medium select-none group-hover:text-gray-300">
+                  I accept the <span className="text-secondary-500 hover:underline" onClick={(e) => { e.preventDefault(); setDialog('ethics'); }}>Arena Ethics</span>
+                </span>
+              </label>
             </div>
 
-            <button
+            <div className="pt-2">
+              <button 
+                type="button" 
+                onClick={connectPetraWallet}
+                className={`w-full py-3 rounded-xl flex items-center justify-center space-x-2 border transition-all text-sm font-bold ${walletAddress ? 'bg-[#080b14] border-green-500/50 text-green-400' : 'bg-transparent border-[#2a3040] hover:border-secondary-500/50 hover:bg-[#121625] text-gray-300'}`}
+              >
+                <span>{walletAddress ? `Petra Connected: ${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}` : 'Connect Petra Wallet (Optional)'}</span>
+              </button>
+            </div>
+
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              disabled={signupLoading || !termsAccepted || !ethicsAccepted}
               type="submit"
-              disabled={signupLoading}
-              className="w-full bg-gradient-to-r from-secondary-600 to-secondary-400 text-white font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(188,0,255,0.3)] hover:shadow-[0_0_30px_rgba(188,0,255,0.5)] transition-all transform hover:scale-[1.02] active:scale-[0.98] mt-4 uppercase tracking-wider text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-secondary-600 hover:bg-secondary-500 disabled:opacity-50 disabled:hover:bg-secondary-600 text-white font-black py-3 rounded-xl uppercase tracking-widest text-sm shadow-[0_0_20px_rgba(188,0,255,0.3)] hover:shadow-[0_0_30px_rgba(188,0,255,0.5)] transition-all flex items-center justify-center mt-2"
             >
               {signupLoading ? 'Recruiting...' : 'Start Recruitment'}
-            </button>
+            </motion.button>
           </form>
 
           <div className="relative my-8">
@@ -344,11 +432,11 @@ export default function AuthPage() {
           </div>
 
           <div className="flex gap-4">
-            <button onClick={handleOAuth} className="flex-1 bg-[#080b14] border border-[#2a3040] py-3 rounded-xl flex items-center justify-center space-x-2 hover:border-[#3a4050] hover:bg-[#121625] transition-all">
+            <button onClick={() => handleOAuth('github')} className="flex-1 bg-[#080b14] border border-[#2a3040] py-3 rounded-xl flex items-center justify-center space-x-2 hover:border-[#3a4050] hover:bg-[#121625] transition-all">
               <Github className="w-5 h-5 text-gray-300" />
               <span className="text-sm font-medium text-gray-300">Github</span>
             </button>
-            <button onClick={handleOAuth} className="flex-1 bg-[#080b14] border border-[#2a3040] py-3 rounded-xl flex items-center justify-center space-x-2 hover:border-[#3a4050] hover:bg-[#121625] transition-all">
+            <button onClick={() => handleOAuth('google')} className="flex-1 bg-[#080b14] border border-[#2a3040] py-3 rounded-xl flex items-center justify-center space-x-2 hover:border-[#3a4050] hover:bg-[#121625] transition-all">
               <Chrome className="w-5 h-5 text-gray-300" />
               <span className="text-sm font-medium text-gray-300">Google</span>
             </button>

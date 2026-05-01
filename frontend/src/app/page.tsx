@@ -170,58 +170,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 5. Massive Professional Footer */}
-      <footer className="bg-[#020305] border-t border-gray-900 pt-24 pb-12 px-10 text-gray-400">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
-          <div className="md:col-span-1 space-y-6">
-            <div className="flex items-center gap-3">
-              <Cpu className="text-primary-500" size={28} />
-              <span className="text-2xl font-black tracking-tighter text-white uppercase italic">
-                Code Battle
-              </span>
-            </div>
-            <p className="text-sm font-medium leading-relaxed">
-              The premier platform for high-stakes 1v1 developer combat. Test your logic, speed, and endurance against the global network.
-            </p>
-          </div>
-          
-          <div>
-            <h4 className="text-white font-bold uppercase tracking-[0.2em] text-xs mb-6">Operations</h4>
-            <ul className="space-y-4 text-sm font-medium">
-              <li><Link href="/game" className="hover:text-primary-400 transition-colors">The Arena</Link></li>
-              <li><Link href="/rankings" className="hover:text-primary-400 transition-colors">Leaderboards</Link></li>
-              <li><Link href="/dashboard" className="hover:text-primary-400 transition-colors">Command Center</Link></li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="text-white font-bold uppercase tracking-[0.2em] text-xs mb-6">Intelligence</h4>
-            <ul className="space-y-4 text-sm font-medium">
-              <li><Link href="/about" className="hover:text-primary-400 transition-colors">Protocol & Ethics</Link></li>
-              <li><Link href="/lobby" className="hover:text-primary-400 transition-colors">Global Comms</Link></li>
-              <li><a href="#" className="hover:text-primary-400 transition-colors">Changelog</a></li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="text-white font-bold uppercase tracking-[0.2em] text-xs mb-6">Legal</h4>
-            <ul className="space-y-4 text-sm font-medium">
-              <li><a href="#" className="hover:text-primary-400 transition-colors">Terms of Service</a></li>
-              <li><a href="#" className="hover:text-primary-400 transition-colors">Privacy Policy</a></li>
-              <li><a href="#" className="hover:text-primary-400 transition-colors">Security Audit</a></li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="max-w-7xl mx-auto border-t border-gray-900 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs font-black tracking-widest uppercase">
-          <p>© 2026 Code Battle Platform. All rights reserved.</p>
-          <div className="flex items-center gap-2 text-success-500 bg-success-500/10 px-3 py-1.5 rounded-lg border border-success-500/20">
-            <div className="w-1.5 h-1.5 bg-success-500 rounded-full animate-pulse" />
-            System Operational
-          </div>
-        </div>
-      </footer>
-
     </div>
   );
 }

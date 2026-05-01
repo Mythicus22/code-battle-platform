@@ -9,7 +9,7 @@
  winrate: string;
  arena: number;
  badges: string[];
- metamaskAddress?: string;
+ walletAddress?: string;
  bestRuntime?: number;
  betsToday?: number;
  createdAt: Date;
