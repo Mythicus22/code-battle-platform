@@ -1,5 +1,4 @@
 import User from '../models/User.model';
-import env from '../config/env';
 
 export async function awardTrophy(userId: string, amount: number): Promise<number> {
   const user = await User.findById(userId);
@@ -18,15 +17,14 @@ export async function updateMatchStats(
   winnerId: string,
   loserId: string
 ): Promise<void> {
-  // Generate random trophy amount between 40 and 50
-  const randomTrophies = Math.floor(Math.random() * 11) + 40;
+  const TROPHIES_REWARD = 25;
 
   // Update winner
   await User.findByIdAndUpdate(winnerId, {
     $inc: {
       totalGames: 1,
       wins: 1,
-      trophies: randomTrophies,
+      trophies: TROPHIES_REWARD,
     },
   });
 
@@ -35,7 +33,7 @@ export async function updateMatchStats(
     $inc: {
       totalGames: 1,
       losses: 1,
-      trophies: -randomTrophies,
+      trophies: -TROPHIES_REWARD,
     },
   });
 

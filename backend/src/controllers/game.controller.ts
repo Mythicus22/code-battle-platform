@@ -122,7 +122,7 @@ export async function getMatch(req: AuthRequest, res: Response): Promise<void> {
     const userId = req.user?.userId ?? null;
 
     const match = await Match.findById(id)
-      .select("player1 player2 problem status createdAt startAt startsAt startTime")
+      .select("player1 player2 problem status createdAt startAt startsAt startTime winner player1Submissions player2Submissions startedAt endedAt")
       .populate("player1", "username trophies walletAddress")
       .populate("player2", "username trophies walletAddress")
       .populate("problem", "title description difficulty")
@@ -238,6 +238,12 @@ export async function getMatch(req: AuthRequest, res: Response): Promise<void> {
       // matchmaking hint fields
       hint, // short string for client to display
       hintExpiresAt, // ISO when hint should no longer be shown (if applicable)
+      // data for completed match reviews
+      winner: match.winner,
+      player1Submissions: match.player1Submissions || [],
+      player2Submissions: match.player2Submissions || [],
+      startedAt: (match as any).startedAt ?? null,
+      endedAt: (match as any).endedAt ?? null,
     };
 
     // Prevent client/CDN caching so league/arena views see updated trophies immediately

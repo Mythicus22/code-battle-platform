@@ -6,10 +6,11 @@ interface MatchmakingRequest {
   betAmount: number;
   socketId: string;
   language: string;
+  cryptoBetting?: boolean;
 }
 
 const MATCHMAKING_QUEUE_KEY = 'matchmaking:queue';
-const TROPHY_RANGE = 200;
+const TROPHY_RANGE = 100;
 
 export async function joinQueue(request: MatchmakingRequest): Promise<MatchmakingRequest | null> {
   const redis = getRedisClient();
@@ -33,10 +34,12 @@ export async function joinQueue(request: MatchmakingRequest): Promise<Matchmakin
     const trophyDiff = Math.abs(opponent.trophies - request.trophies);
     // Check if bet amounts match
     const betMatch = opponent.betAmount === request.betAmount;
+    // Check if crypto mode matches
+    const modeMatch = !!opponent.cryptoBetting === !!request.cryptoBetting;
     // Check not same user
     const differentUser = opponent.userId !== request.userId;
 
-    if (trophyDiff <= TROPHY_RANGE && betMatch && differentUser) {
+    if (trophyDiff <= TROPHY_RANGE && betMatch && modeMatch && differentUser) {
       // Found a match! Remove opponent from queue
       await redis.lRem(MATCHMAKING_QUEUE_KEY, 1, data);
       return opponent;

@@ -37,10 +37,10 @@ const envSchema = z.object({
   AI_AGENT_API_URL: z.string().url().default('https://agent-prod.studio.lyzr.ai/v3/inference/chat/'),
   AI_AGENT_API_KEY: z.string().min(1),
   AI_AGENT_ID: z.string().min(1),
-  // Blockchain
-  SEPOLIA_RPC_URL: z.string().url().default('https://rpc.sepolia.org'),
-  COMMISSION_WALLET_PRIVATE_KEY: z.string().min(1),
-  CONTRACT_ADDRESS: z.string().min(1),
+  // Blockchain - Aptos
+  APTOS_NETWORK: z.enum(['testnet', 'mainnet']).default('testnet'),
+  APTOS_NODE_URL: z.string().url().optional(),
+  APTOS_CONTRACT_ADDRESS: z.string().optional(),
 });
 
 const env = envSchema.parse(process.env);

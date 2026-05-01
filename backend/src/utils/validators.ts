@@ -35,10 +35,6 @@ export const updateProfileSchema = z.object({
     .optional(),
 });
 
-export const connectMetaMaskSchema = z.object({
-  address: z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid Ethereum address'),
-});
-
 // Game validators
 export const submitCodeSchema = z.object({
   matchId: z.string().length(24, 'Invalid match ID'),

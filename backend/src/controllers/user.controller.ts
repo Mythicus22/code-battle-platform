@@ -88,6 +88,25 @@ export async function getBadges(req: Request, res: Response): Promise<void> {
   }
 }
 
+export async function getUserProfile(req: Request, res: Response): Promise<void> {
+  try {
+    const { username } = req.params;
+    const user = await User.findOne({ username })
+      .select('username trophies totalGames wins losses winrate arena badges profilePicture createdAt')
+      .lean();
+
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    res.json({ user });
+  } catch (error) {
+    console.error('Get public profile error:', error);
+    res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+}
+
 export async function getMatches(req: Request, res: Response): Promise<void> {
   try {
     const userId = req.user?.userId;
@@ -135,31 +154,40 @@ export async function getRemainingBets(req: Request, res: Response): Promise<voi
   }
 }
 
-export async function connectMetaMask(req: Request, res: Response): Promise<void> {
+export async function getFriends(req: Request, res: Response): Promise<void> {
   try {
-    const { address } = req.body;
-    const userId = req.user?.userId;
-
-    const user = await User.findById(userId);
+    const user = await User.findById(req.user?.userId).populate('friends', 'username trophies profilePicture');
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
     }
 
-    if (!user.isVerified) {
-      res.status(403).json({ error: 'Please verify your email before connecting MetaMask' });
+    res.json({ friends: user.friends });
+  } catch (error) {
+    console.error('Get friends error:', error);
+    res.status(500).json({ error: 'Failed to fetch friends' });
+  }
+}
+
+export async function searchUsers(req: Request, res: Response): Promise<void> {
+  try {
+    const query = req.query.q as string;
+    if (!query) {
+      res.json({ users: [] });
       return;
     }
 
-    user.walletAddress = address;
-    await user.save();
+    const users = await User.find({
+      username: { $regex: query, $options: 'i' },
+      _id: { $ne: req.user?.userId }
+    })
+      .select('username trophies profilePicture')
+      .limit(10)
+      .lean();
 
-    res.json({
-      message: 'MetaMask connected successfully',
-      address: user.walletAddress,
-    });
+    res.json({ users });
   } catch (error) {
-    console.error('Connect MetaMask error:', error);
-    res.status(500).json({ error: 'Failed to connect MetaMask' });
+    console.error('Search users error:', error);
+    res.status(500).json({ error: 'Failed to search users' });
   }
 }

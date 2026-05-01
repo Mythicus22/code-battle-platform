@@ -343,7 +343,11 @@ export async function oauthLogin(req: Request, res: Response): Promise<void> {
 
 export async function getMe(req: Request, res: Response): Promise<void> {
   try {
-    const user = await User.findById(req.user?.userId).select('-password -otp');
+    const user = await User.findById(req.user?.userId)
+      .select('-password -otp')
+      .populate('friends', 'username email trophies arena winrate')
+      .populate('friendRequests', 'username email');
+    
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
@@ -362,6 +366,9 @@ export async function getMe(req: Request, res: Response): Promise<void> {
         arena: user.arena,
         badges: user.badges,
         walletAddress: user.walletAddress,
+        friends: user.friends,
+        friendRequests: user.friendRequests,
+        profilePicture: user.profilePicture,
       },
     });
   } catch (error) {

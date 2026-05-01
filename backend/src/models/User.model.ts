@@ -22,6 +22,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
  // Virtual properties
  winrate: string;
  arena: number;
+ profilePicture?: string;
  }
  const UserSchema = new Schema<IUser>(
  {
@@ -84,6 +85,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
     bestRuntime: Number,
     friends: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     friendRequests: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+    profilePicture: { type: String, default: 'https://api.dicebear.com/7.x/avataaars/svg?seed=placeholder&backgroundColor=b6e3f4' }
   },
   {
     timestamps: true,
